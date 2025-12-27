@@ -7,8 +7,38 @@ from typing import List, Dict
 from py3xui import Api, Client, Inbound
 
 from shop_bot.data_manager.database import get_host, get_key_by_email
+import base64
+from shop_bot.data_manager.database import get_user_keys
 
 logger = logging.getLogger(__name__)
+
+
+
+async def get_all_active_subscription_links(user_id: int) -> str | None:
+    """
+    Собирает все активные connection_string пользователя и возвращает base64-закодированную подписку.
+    """
+    keys = get_user_keys(user_id)
+    now = datetime.now()
+    active_links = []
+
+    for key in keys:
+        expiry = datetime.fromisoformat(key['expiry_date'])
+        if expiry <= now:
+            continue  
+
+        try:
+            details = await get_key_details_from_host(key)
+            if details and details.get('connection_string'):
+                active_links.append(details['connection_string'])
+        except Exception as e:
+            logger.warning(f"Failed to fetch link for key {key['key_id']}: {e}")
+
+    if not active_links:
+        return None
+
+    raw_text = "\n".join(active_links)
+    return base64.b64encode(raw_text.encode('utf-8')).decode('utf-8')
 
 def login_to_host(host_url: str, username: str, password: str, inbound_id: int) -> tuple[Api | None, Inbound | None]:
     try:

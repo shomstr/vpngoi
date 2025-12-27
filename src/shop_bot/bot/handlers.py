@@ -31,6 +31,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ChatMemberStatus
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
+
 from shop_bot.bot import keyboards
 from shop_bot.modules import xui_api
 from shop_bot.data_manager.database import (
@@ -115,6 +118,9 @@ def registration_required(f):
                 await event.answer(message_text)
     return decorated_function
 
+
+        )
+
 def get_user_router() -> Router:
     user_router = Router()
 
@@ -190,6 +196,36 @@ def get_user_router() -> Router:
             disable_web_page_preview=True
         )
         await state.set_state(Onboarding.waiting_for_subscription_and_agreement)
+
+    @user_router.callback_query(F.data == "get_unified_subscription")
+    @registration_required
+    async def get_unified_subscription_handler(callback: types.CallbackQuery):
+        await callback.answer()
+        user_id = callback.from_user.id
+        try:
+            sub_b64 = await xui_api.get_all_active_subscription_links(user_id)
+            if not sub_b64:
+                await callback.message.edit_text(
+                    "❌ У вас нет активных ключей для подписки.",
+                    reply_markup=keyboards.create_back_to_menu_keyboard()
+                )
+                return
+
+            sub_url = f"data:text/plain;base64,{sub_b64}"
+
+            await callback.message.edit_text(
+                "✅ Вот ваша объединённая подписка:\n\n"
+                "Нажмите на кнопку ниже и выберите «Копировать».",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔗 Подписка (base64)", url=sub_url)],
+                    [InlineKeyboardButton(text="⬅️ Назад к ключам", callback_data="manage_keys")]
+                ])
+            )
+        except Exception as e:
+            logger.error(f"Error generating unified subscription for {user_id}: {e}")
+            await callback.message.edit_text(
+                "❌ Ошибка при создании подписки.",
+                reply_markup=keyboards.create_back_to_menu_keyboard()
 
     @user_router.callback_query(Onboarding.waiting_for_subscription_and_agreement, F.data == "check_subscription_and_agree")
     async def check_subscription_handler(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
