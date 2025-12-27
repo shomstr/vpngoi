@@ -8,6 +8,8 @@ import hashlib
 import json
 import base64
 import asyncio
+import yaml
+
 
 from urllib.parse import urlencode
 from hmac import compare_digest
@@ -192,6 +194,7 @@ def get_user_router() -> Router:
         )
         await state.set_state(Onboarding.waiting_for_subscription_and_agreement)
 
+
     @user_router.callback_query(F.data == "get_full_subscription")
     @registration_required
     async def get_full_subscription_handler(callback: types.CallbackQuery):
@@ -199,32 +202,57 @@ def get_user_router() -> Router:
         await callback.answer("Создаём подписку на все серверы...", show_alert=True)
 
         try:
-            # Создаём по одному новому ключу на каждом сервере и получаем ссылки
-            links = await key_manager.create_keys_on_all_hosts_and_get_links(user_id)
+            # Теперь возвращаем СТРУКТУРУ прокси, а не URI-ссылки
+            proxies = await key_manager.create_keys_on_all_hosts_and_get_proxies(user_id)
 
-            if not links:
+            if not proxies:
                 await callback.message.answer(
                     "❌ Не удалось создать подписку. Возможно, нет активных серверов.",
                     reply_markup=keyboards.create_back_to_menu_keyboard()
                 )
                 return
 
-            # Формируем base64-подписку (стандартный формат для V2Ray-клиентов)
-            raw_text = "\n".join(links)
-            sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
+            # Опционально: добавить метаданные (поддерживается Clash Meta)
+            clash_config = {
+                "mixed-port": 7890,
+                "allow-lan": False,
+                "log-level": "info",
+                "ipv6": True,
+                "proxies": proxies,
+                "proxy-groups": [
+                    {
+                        "name": "🚀 Все серверы",
+                        "type": "select",
+                        "proxies": [p["name"] for p in proxies]
+                    }
+                ],
+                # Опционально: правила (rules) можно добавить позже
+                "rules": ["MATCH,🚀 Все серверы"]
+            }
 
-            # Отправляем подписку как текст (v2rayNG и другие клиенты принимают base64)
+            # Генерируем YAML
+            yaml_str = yaml.dump(
+                clash_config,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+                indent=2
+            )
+
+            # Кодируем в base64
+            sub_b64 = base64.b64encode(yaml_str.encode("utf-8")).decode("utf-8")
+
             await callback.message.answer(
-                "✅ <b>Ваша персональная подписка на все серверы:</b>\n\n"
+                "✅ <b>Ваша Clash Meta-подписка на все серверы:</b>\n\n"
                 "<code>{}</code>".format(sub_b64),
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
 
         except Exception as e:
-            logger.error(f"Ошибка при создании full-подписки для {user_id}: {e}", exc_info=True)
+            logger.error(f"Ошибка при создании Clash-подписки для {user_id}: {e}", exc_info=True)
             await callback.message.answer(
-                "❌ Произошла ошибка при создании подписки. Попробуйте позже.",
+                "❌ Ошибка при генерации Clash-подписки. Попробуйте позже.",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
 
