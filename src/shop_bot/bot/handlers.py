@@ -202,22 +202,17 @@ def get_user_router() -> Router:
         await callback.answer("Создаём подписку на все серверы...", show_alert=True)
 
         try:
-            # Теперь возвращаем СТРУКТУРУ прокси, а не URI-ссылки
             proxies = await key_manager.create_keys_on_all_hosts_and_get_proxies(user_id)
 
             if not proxies:
                 await callback.message.answer(
-                    "❌ Не удалось создать подписку. Возможно, нет активных серверов.",
+                    "❌ Не удалось создать подписку. Возможно, нет активных серверов или ошибка конфигурации.",
                     reply_markup=keyboards.create_back_to_menu_keyboard()
                 )
                 return
 
-            # Опционально: добавить метаданные (поддерживается Clash Meta)
+            # Только то, что нужно для подписки Clash Meta
             clash_config = {
-                "mixed-port": 7890,
-                "allow-lan": False,
-                "log-level": "info",
-                "ipv6": True,
                 "proxies": proxies,
                 "proxy-groups": [
                     {
@@ -226,20 +221,18 @@ def get_user_router() -> Router:
                         "proxies": [p["name"] for p in proxies]
                     }
                 ],
-                # Опционально: правила (rules) можно добавить позже
                 "rules": ["MATCH,🚀 Все серверы"]
             }
 
-            # Генерируем YAML
             yaml_str = yaml.dump(
                 clash_config,
                 allow_unicode=True,
                 default_flow_style=False,
                 sort_keys=False,
-                indent=2
+                indent=2,
+                width=1000  # избегаем разбивки длинных строк
             )
 
-            # Кодируем в base64
             sub_b64 = base64.b64encode(yaml_str.encode("utf-8")).decode("utf-8")
 
             await callback.message.answer(
@@ -252,7 +245,7 @@ def get_user_router() -> Router:
         except Exception as e:
             logger.error(f"Ошибка при создании Clash-подписки для {user_id}: {e}", exc_info=True)
             await callback.message.answer(
-                "❌ Ошибка при генерации Clash-подписки. Попробуйте позже.",
+                "❌ Ошибка при генерации подписки. Обратитесь к администратору.",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
 

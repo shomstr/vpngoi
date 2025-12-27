@@ -27,57 +27,80 @@ async def create_keys_on_all_hosts_and_get_proxies(user_id: int) -> list[dict]:
     expiry_timestamp = int((now + timedelta(days=duration_days)).timestamp())
 
     for host in hosts:
-        host_name = host["host_name"]
+        host_name = host.get("host_name")
+        if not host_name:
+            logger.error("Host missing 'host_name', skipping.")
+            continue
+
         try:
             email = f"{user_id}_{int(now.timestamp())}@{host_name}"
 
-            # Предполагаем, что эта функция теперь возвращает СТРУКТУРУ, а не URI
+            # Создаём ключ на хосте
             proxy_config = await create_or_update_key_on_host(
                 host_name=host_name,
                 email=email,
                 days_to_add=duration_days
             )
 
-            if not proxy_config or not proxy_config.get("uuid"):
-                logger.error(f"Failed to create key on {host_name}")
+            # Поддерживаем оба варианта: "uuid" и "client_uuid"
+            uuid_val = None
+            if proxy_config:
+                uuid_val = proxy_config.get("uuid") or proxy_config.get("client_uuid")
+            if not uuid_val:
+                logger.error(f"Key creation succeeded on x-ui, but UUID is missing for {host_name}. Result: {proxy_config}")
                 continue
 
-            # Формируем Clash Meta-совместимый прокси (VLESS over TCP+TLS или WS)
+            # Обязательные параметры хоста
+            address = host.get("address")
+            port = host.get("port")
+            if not address or not port:
+                logger.error(f"Host '{host_name}' missing 'address' or 'port', skipping.")
+                continue
+
+            # Опциональные параметры с безопасными значениями по умолчанию
+            network = host.get("network", "tcp")
+            tls = host.get("tls", True)
+            sni = host.get("sni") or address
+            flow = host.get("flow")  # может быть None или строка
+            path = host.get("path", "/")
+            host_header = host.get("host_header") or (sni if tls else address)
+            fingerprint = host.get("fingerprint", "chrome")
+            display_name = host.get("display_name") or host_name
+
+            # Формируем прокси для Clash Meta
             proxy = {
-                "name": f"{host.get('display_name', host_name)}",
+                "name": display_name,
                 "type": "vless",
-                "server": host["address"],          # IP или домен
-                "port": host["port"],               # порт инбаунда
-                "uuid": proxy_config["uuid"],
-                "network": host.get("network", "tcp"),
-                "tls": host.get("tls", True),
+                "server": address,
+                "port": port,
+                "uuid": uuid_val,
+                "network": network,
+                "tls": bool(tls),
                 "udp": True,
                 "skip-cert-verify": True,
             }
 
-            # Дополнительные параметры для TLS
-            if proxy["tls"]:
-                sni = host.get("sni") or host["address"]
-                proxy["servername"] = sni  # Clash Meta использует 'servername', не 'sni'
-                fp = host.get("fingerprint", "chrome")
-                proxy["fingerprint"] = fp
+            # TLS-настройки
+            if tls:
+                proxy["servername"] = sni
+                proxy["fingerprint"] = fingerprint
 
             # WebSocket
-            if proxy["network"] == "ws":
+            if network == "ws":
                 proxy["ws-opts"] = {
-                    "path": host.get("path", "/"),
-                    "headers": {"Host": host.get("host_header", sni) if proxy["tls"] else host.get("host_header", host["address"])}
+                    "path": path,
+                    "headers": {"Host": host_header}
                 }
 
-            # Flow (xtls-rprx-vision и т.п.) — только если поддерживается Clash Meta
-            if host.get("flow"):
-                proxy["flow"] = host["flow"]
+            # Flow (только если задан и поддерживается)
+            if flow:
+                proxy["flow"] = flow
 
-            # Сохраняем в БД (можно использовать те же данные)
+            # Сохраняем в БД
             add_new_key(
                 user_id=user_id,
                 host_name=host_name,
-                client_id=proxy_config["uuid"],
+                client_id=uuid_val,
                 email=email,
                 expiry=int(expiry_timestamp * 1000)
             )
@@ -85,6 +108,7 @@ async def create_keys_on_all_hosts_and_get_proxies(user_id: int) -> list[dict]:
             proxies.append(proxy)
 
         except Exception as e:
-            logger.error(f"Error creating key on {host_name} for {user_id}: {e}", exc_info=True)
+            logger.error(f"Unexpected error creating key on {host_name} for {user_id}: {e}", exc_info=True)
+            continue
 
     return proxies
