@@ -202,7 +202,7 @@ def get_user_router() -> Router:
         await callback.answer("Создаём подписку на все серверы...", show_alert=True)
 
         try:
-            proxies = await key_manager.create_keys_on_all_hosts_and_get_proxies(user_id)
+            proxies = await key_manager.create_keys_on_all_hosts_and_get_clash_proxies(user_id)
 
             if not proxies:
                 await callback.message.answer(
