@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from shop_bot.data_manager.database import add_key_to_db, get_setting
+from shop_bot.data_manager.database import add_new_key, get_setting
 from shop_bot.modules.xui_api import create_client_on_host
 
 logger = logging.getLogger(__name__)
@@ -45,15 +45,7 @@ async def create_keys_on_all_hosts_and_get_links(user_id: int) -> list[str]:
             )
 
             # Сохраняем в БД
-            add_key_to_db(
-                user_id=user_id,
-                host_name=host_name,
-                client_id=client_id,
-                expiry_date=expiry.isoformat(),
-                total_gb=traffic_gb,
-                price=0,
-                is_trial=True
-            )
+            add_new_key(user_id, host_name, client_id, email, int(expiry.timestamp() * 1000))
 
             if link:
                 links.append(link)
