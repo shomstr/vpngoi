@@ -15,7 +15,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def create_keys_on_all_hosts_and_get_clash_proxies(user_id: int) -> list[dict]:
+async def create_keys_on_all_hosts_and_get_proxies(user_id: int) -> list[dict]:
     hosts = get_all_hosts()
     if not hosts:
         logger.warning("No hosts found for subscription!")
