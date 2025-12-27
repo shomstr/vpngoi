@@ -25,6 +25,7 @@ from shop_bot.data_manager.database import (
 )
 import yaml
 import base64 as b64
+import asyncio
 
 from shop_bot.modules import key_manager
 
@@ -418,6 +419,7 @@ def create_webhook_app(bot_controller_instance):
             logger.error(f"Error in ton webhook handler: {e}", exc_info=True)
             return 'Error', 500
         
+
     @flask_app.route("/sub/<sub_uuid>")
     def serve_subscription(sub_uuid: str):
         user_id = get_user_id_by_subscription_uuid(sub_uuid)
@@ -425,11 +427,20 @@ def create_webhook_app(bot_controller_instance):
             return "Not found", 404
 
         try:
-            proxies = key_manager.create_keys_on_all_hosts_and_get_clash_proxies(user_id)
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Выполняем асинхронную функцию СИНХРОННО
+            proxies = loop.run_until_complete(
+                key_manager.create_keys_on_all_hosts_and_get_clash_proxies(user_id)
+            )
+
             if not proxies:
                 return "No proxies available", 404
 
-            # Настройки подписки
             clash_config = {
                 "proxies": proxies,
                 "proxy-groups": [
@@ -446,12 +457,10 @@ def create_webhook_app(bot_controller_instance):
                 indent=2,
             )
 
-            # Определяем дату окончания (например, текущая + trial_days)
-            from shop_bot.data_manager.database import get_setting
+            from datetime import datetime, timedelta
             trial_days = int(get_setting("trial_duration_days") or 1)
             expiry_timestamp = int((datetime.now() + timedelta(days=trial_days)).timestamp())
 
-            # Формируем ответ
             resp = make_response(yaml_str)
             resp.headers["Content-Type"] = "text/yaml; charset=utf-8"
             resp.headers["Profile-Title"] = "base64:" + b64.b64encode("Мой VPN".encode()).decode()
@@ -462,7 +471,7 @@ def create_webhook_app(bot_controller_instance):
             return resp
 
         except Exception as e:
-            logger.error(f"Ошибка в эндпоинте /sub/{sub_uuid}: {e}")
+            logger.error(f"Ошибка в эндпоинте /sub/{sub_uuid}: {e}", exc_info=True)
             return "Internal error", 500
 
     return flask_app
