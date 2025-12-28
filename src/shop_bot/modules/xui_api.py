@@ -32,6 +32,8 @@ def login_to_host(host_url: str, username: str, password: str, inbound_id: int) 
         return None, None
 
 
+from urllib.parse import quote
+from typing import Any
 
 def get_connection_string(
     inbound,
@@ -40,58 +42,120 @@ def get_connection_string(
     remark: str
 ) -> str | None:
     """
-    Generate a universal connection URI for various protocols and stream settings.
-
-    Supports:
-      - Protocol: VLESS, VMess, Trojan
-      - Stream: reality, TLS, plain TCP/WS
+    Генерирует корректную VLESS/XHTTP/REALITY ссылку, как в примере:
+    vless://...?type=xhttp&encryption=none&...&security=reality&...
     """
-    protocol = inbound.protocol.lower()
+    # Порт берётся из inbound'а, а не из отдельной константы
     port = inbound.port
     stream = inbound.stream_settings
 
-    # Base URI parts
-    uuid_or_email = user_uuid 
-    base = f"{protocol}://{uuid_or_email}@{host_url}:{port}"
+    # Базовая часть URI
+    base = f"vless://{user_uuid}@{host_url}:{port}"
 
-    # Common query params
-    params = {}
+    # Обязательный параметр для VLESS при reality
+    params: dict[str, Any] = {"encryption": "none"}
 
-    # Stream-specific settings
+    # Тип транспорта
     if stream.network:
         params["type"] = stream.network
 
+    # XHTTP-специфичные параметры (если network == "xhttp")
+    if stream.network == "xhttp":
+        # path по умолчанию "/"
+        params["path"] = quote((stream.xhttp_settings or {}).get("path", "/"))
+        # host может быть пустым
+        host = (stream.xhttp_settings or {}).get("host", "")
+        if host:
+            params["host"] = host
+        # mode по умолчанию "auto"
+        params["mode"] = (stream.xhttp_settings or {}).get("mode", "auto")
+
+    # REALITY-настройки
     if stream.security == "reality":
+        params["security"] = "reality"
         reality = stream.reality_settings or {}
         settings = reality.get("settings", {})
         server_names = reality.get("serverNames", [])
         short_ids = reality.get("shortIds", [])
 
-        params.update({
-            "security": "reality",
-            "pbk": settings.get("publicKey"),
-            "fp": settings.get("fingerprint", "chrome"),
-            "sni": server_names[0] if server_names else "",
-            "sid": short_ids[0] if short_ids else "",
-            "spx": quote(settings.get("spiderX", "/"))
-        })
-    elif stream.security == "tls":
-        params["security"] = "tls"
-        sni = (stream.tls_settings or {}).get("serverName")
-        if sni:
-            params["sni"] = sni
-        params["fp"] = "chrome"  # optional default
-    else:
-        # No encryption
-        if protocol != "trojan":
-            params["security"] = "none"
+        params["pbk"] = settings.get("publicKey")
+        params["fp"] = settings.get("fingerprint", "chrome")
+        params["sni"] = server_names[0] if server_names else ""
+        params["sid"] = short_ids[0] if short_ids else ""
+        # spx должен быть закодирован, даже если "/"
+        spider_x = settings.get("spiderX", "/")
+        params["spx"] = quote(spider_x)
 
-    # Build query string
-    query_items = [f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, "")]
-    query = "&".join(query_items)
+    # Сборка query string: пропускаем None и пустые значения, кроме path/spx
+    query_parts = []
+    for k, v in params.items():
+        if v is not None and v != "":
+            query_parts.append(f"{k}={quote(str(v))}")
+
+    query = "&".join(query_parts)
     fragment = f"{remark}-{user_uuid}"
 
     return f"{base}?{query}#{quote(fragment)}"
+
+# def get_connection_string(
+#     inbound,
+#     user_uuid: str,
+#     host_url: str,
+#     remark: str
+# ) -> str | None:
+#     """
+#     Generate a universal connection URI for various protocols and stream settings.
+
+#     Supports:
+#       - Protocol: VLESS, VMess, Trojan
+#       - Stream: reality, TLS, plain TCP/WS
+#     """
+#     protocol = inbound.protocol.lower()
+#     port = inbound.port
+#     stream = inbound.stream_settings
+
+#     # Base URI parts
+#     uuid_or_email = user_uuid 
+#     base = f"{protocol}://{uuid_or_email}@{host_url}:{port}"
+
+#     # Common query params
+#     params = {}
+
+#     # Stream-specific settings
+#     if stream.network:
+#         params["type"] = stream.network
+
+#     if stream.security == "reality":
+#         reality = stream.reality_settings or {}
+#         settings = reality.get("settings", {})
+#         server_names = reality.get("serverNames", [])
+#         short_ids = reality.get("shortIds", [])
+
+#         params.update({
+#             "security": "reality",
+#             "pbk": settings.get("publicKey"),
+#             "fp": settings.get("fingerprint", "chrome"),
+#             "sni": server_names[0] if server_names else "",
+#             "sid": short_ids[0] if short_ids else "",
+#             "spx": quote(settings.get("spiderX", "/"))
+#         })
+#     elif stream.security == "tls":
+#         params["security"] = "tls"
+#         sni = (stream.tls_settings or {}).get("serverName")
+#         if sni:
+#             params["sni"] = sni
+#         params["fp"] = "chrome"  # optional default
+#     else:
+#         # No encryption
+#         if protocol != "trojan":
+#             params["security"] = "none"
+
+#     # Build query string
+#     query_items = [f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, "")]
+#     query = "&".join(query_items)
+#     fragment = f"{remark}-{user_uuid}"
+
+#     return f"{base}?{query}#{quote(fragment)}"
 
 def update_or_create_client_on_panel(api: Api, inbound_id: int, email: str, days_to_add: int) -> tuple[str | None, int | None]:
     try:
