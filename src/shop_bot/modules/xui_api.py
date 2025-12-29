@@ -35,67 +35,28 @@ def login_to_host(host_url: str, username: str, password: str, inbound_id: int) 
 from urllib.parse import quote
 from typing import Any
 
-def get_connection_string(
-    inbound,
-    user_uuid: str,
-    host_url: str,
-    remark: str
-) -> str | None:
-    """
-    Генерирует корректную VLESS/XHTTP/REALITY ссылку, как в примере:
-    vless://...?type=xhttp&encryption=none&...&security=reality&...
-    """
-    # Порт берётся из inbound'а, а не из отдельной константы
+def get_connection_string(inbound: Inbound, user_uuid: str, host_url: str, remark: str) -> str | None:
+    if not inbound: return None
+    settings = inbound.stream_settings.reality_settings.get("settings")
+    if not settings: return None
+    logger.error(inbound)
+    public_key = settings.get("publicKey")
+    fp = settings.get("fingerprint")
+    server_names = inbound.stream_settings.reality_settings.get("serverNames")
+    short_ids = inbound.stream_settings.reality_settings.get("shortIds")
     port = inbound.port
-    stream = inbound.stream_settings
-
-    # Базовая часть URI
-    base = f"vless://{user_uuid}@{host_url}:{port}"
-
-    # Обязательный параметр для VLESS при reality
-    params: dict[str, Any] = {"encryption": "none"}
-
-    # Тип транспорта
-    if stream.network:
-        params["type"] = stream.network
-
-    # XHTTP-специфичные параметры (если network == "xhttp")
-    if stream.network == "xhttp":
-        # path по умолчанию "/"
-        params["path"] = quote((stream.xhttp_settings or {}).get("path", "/"))
-        # host может быть пустым
-        host = (stream.xhttp_settings or {}).get("host", "")
-        if host:
-            params["host"] = host
-        # mode по умолчанию "auto"
-        params["mode"] = (stream.xhttp_settings or {}).get("mode", "auto")
-
-    # REALITY-настройки
-    if stream.security == "reality":
-        params["security"] = "reality"
-        reality = stream.reality_settings or {}
-        settings = reality.get("settings", {})
-        server_names = reality.get("serverNames", [])
-        short_ids = reality.get("shortIds", [])
-
-        params["pbk"] = settings.get("publicKey")
-        params["fp"] = settings.get("fingerprint", "chrome")
-        params["sni"] = server_names[0] if server_names else ""
-        params["sid"] = short_ids[0] if short_ids else ""
-        # spx должен быть закодирован, даже если "/"
-        spider_x = settings.get("spiderX", "/")
-        params["spx"] = quote(spider_x)
-
-    # Сборка query string: пропускаем None и пустые значения, кроме path/spx
-    query_parts = []
-    for k, v in params.items():
-        if v is not None and v != "":
-            query_parts.append(f"{k}={quote(str(v))}")
-
-    query = "&".join(query_parts)
-    fragment = f"{remark}-{user_uuid}"
-
-    return f"{base}?{query}#{quote(fragment)}"
+    
+    if not all([public_key, server_names, short_ids]): return None
+    
+    parsed_url = urlparse(host_url)
+    short_id = short_ids[0]
+    
+    connection_string = (
+        f"vless://{user_uuid}@{parsed_url.hostname}:{port}"
+        f"?type=tcp&security=reality&pbk={public_key}&fp={fp}&sni={server_names[0]}"
+        f"&sid={short_id}&spx=%2F&flow=xtls-rprx-vision#{remark}"
+    )
+    return connection_string
 
 # def get_connection_string(
 #     inbound,
