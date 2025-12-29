@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from shop_bot.data_manager.database import add_new_key, get_setting
+from shop_bot.data_manager.database import add_new_key, get_setting, get_keys_for_host
 from shop_bot.modules.xui_api import create_or_update_key_on_host  # ✅ существует
 import urllib.parse
 
@@ -36,7 +36,8 @@ async def create_keys_on_all_hosts_and_get_links(user_id: int) -> list[str]:
                 email=email,
                 days_to_add=duration_days
             )
-            logger.error(result)
+            res = get_keys_for_host(host_name)
+            logger.error(res)
             if not result:
                 logger.error(f"Failed to create key on {host_name}")
                 continue
