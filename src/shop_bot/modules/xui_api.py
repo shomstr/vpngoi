@@ -39,13 +39,12 @@ def get_connection_string(inbound: Inbound, user_uuid: str, host_url: str, remar
     if not inbound: return None
     settings = inbound.stream_settings.reality_settings.get("settings")
     if not settings: return None
-    logger.error(inbound)
     public_key = settings.get("publicKey")
     fp = settings.get("fingerprint")
     server_names = inbound.stream_settings.reality_settings.get("serverNames")
     short_ids = inbound.stream_settings.reality_settings.get("shortIds")
     port = inbound.port
-    
+    logger.error(server_names)
     if not all([public_key, server_names, short_ids]): return None
     
     parsed_url = urlparse(host_url)
@@ -53,7 +52,7 @@ def get_connection_string(inbound: Inbound, user_uuid: str, host_url: str, remar
     
     connection_string = (
         f"vless://{user_uuid}@{parsed_url.hostname}:{port}"
-        f"?type=tcp&security=reality&pbk={public_key}&fp={fp}&sni={server_names[0]}"
+        f"?type=tcp&encryption=none&security=reality&pbk={public_key}&fp={fp}&sni={server_names[0]}"
         f"&sid={short_id}&spx=%2F&flow=xtls-rprx-vision#{remark}"
     )
     return connection_string
@@ -191,7 +190,7 @@ async def create_or_update_key_on_host(host_name: str, email: str, days_to_add: 
         return None
     
     connection_string = get_connection_string(inbound, client_uuid, host_data['host_url'], remark=host_name)
-    
+    logger.error(connection_string)
     logger.info(f"Successfully processed key for '{email}' on host '{host_name}'.")
     
     return {
