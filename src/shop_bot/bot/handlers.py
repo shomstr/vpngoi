@@ -242,7 +242,7 @@ def get_user_router() -> Router:
                 reply_markup=keyboards.create_back_to_menu_keyboard()
 
             )
-    @user_router.callback_query(F.data == "get_full_subscription")
+    @user_router.callback_query(F.data == "get_unified_subscription")
     @registration_required
     async def get_full_subscription_handler(callback: types.CallbackQuery):
         user_id = callback.from_user.id
