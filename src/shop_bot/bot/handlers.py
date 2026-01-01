@@ -1468,23 +1468,6 @@ def get_user_router() -> Router:
             # Обрабатываем платеж
             await process_successful_payment(bot, metadata)
             
-            # Генерируем или получаем UUID подписки
-            sub_uuid = create_subscription_link(user_id)
-
-            # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-            YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
-
-            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
-
-            await message.answer(
-                "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
-                f"<code>{sub_url}</code>\n\n"
-                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
-                parse_mode="HTML",
-                reply_markup=keyboards.create_back_to_menu_keyboard()
-            )
-
-            
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
             await message.answer("❌ Ошибка при обработке платежа. Обратитесь в поддержку.")
@@ -1722,8 +1705,10 @@ async def get_ton_usdt_rate() -> Decimal | None:
     except Exception as e:
         logger.error(f"Error getting TON USDT Binance rate: {e}", exc_info=True)
         return None
-
 async def process_successful_payment(bot: Bot, metadata: dict):
+    logger.info(f"=== START process_successful_payment ===")
+    logger.info(f"Metadata: {json.dumps(metadata, indent=2)}")
+    
     try:
         user_id = int(metadata['user_id'])
         months = int(metadata['months'])
@@ -1738,7 +1723,9 @@ async def process_successful_payment(bot: Bot, metadata: dict):
         chat_id_to_delete = metadata.get('chat_id')
         message_id_to_delete = metadata.get('message_id')
         
-    except (ValueError, TypeError) as e:
+        logger.info(f"Parsed data: user_id={user_id}, months={months}, action={action}, host_name={host_name}")
+        
+    except (ValueError, TypeError, KeyError) as e:
         logger.error(f"FATAL: Could not parse metadata. Error: {e}. Metadata: {metadata}")
         return
 
@@ -1752,46 +1739,37 @@ async def process_successful_payment(bot: Bot, metadata: dict):
         chat_id=user_id,
         text=f"✅ Оплата получена! Обрабатываю ваш запрос на сервере \"{host_name}\"..."
     )
+    
     try:
-        email = ""
-        if action == "new":
-            key_number = get_next_key_number(user_id)
-            email = f"user{user_id}-key{key_number}@{host_name.replace(' ', '').lower()}.bot"
-        elif action == "extend":
-            key_data = get_key_by_id(key_id)
-            if not key_data or key_data['user_id'] != user_id:
-                await processing_message.edit_text("❌ Ошибка: ключ для продления не найден.")
-                return
-            email = key_data['key_email']
+        # УДАЛЯЕМ старый код работы с XUI API и заменяем на подписку
         
-        days_to_add = months * 30
-        result = await xui_api.create_or_update_key_on_host(
-            host_name=host_name,
-            email=email,
-            days_to_add=days_to_add
-        )
-
-        if not result:
-            await processing_message.edit_text("❌ Не удалось создать/обновить ключ в панели.")
-            return
-
-        if action == "new":
-            key_id = add_new_key(user_id, host_name, result['client_uuid'], result['email'], result['expiry_timestamp_ms'])
-        elif action == "extend":
-            update_key_info(key_id, result['client_uuid'], result['expiry_timestamp_ms'])
+        # 1. Создаем подписку
+        sub_uuid = create_subscription_link(user_id)
+        YOUR_DOMAIN = "213.176.74.138:1488"  # Используйте ваш домен
         
-        price = float(metadata.get('price')) 
-
+        # 2. В зависимости от action создаем разный текст
+        if action == "new":
+            action_text = "приобретен"
+        elif action == "extend":
+            action_text = "продлен"
+        else:
+            action_text = "обработан"
+        
+        # 3. Обновляем статистику пользователя
+        update_user_stats(user_id, price, months)
+        logger.info(f"User stats updated: user_id={user_id}, price={price}, months={months}")
+        
+        # 4. Реферальная система (если есть)
         user_data = get_user(user_id)
         referrer_id = user_data.get('referred_by')
 
         if referrer_id:
             percentage = Decimal(get_setting("referral_percentage") or "0")
-            
             reward = (Decimal(str(price)) * percentage / 100).quantize(Decimal("0.01"))
             
             if float(reward) > 0:
                 add_to_referral_balance(referrer_id, float(reward))
+                logger.info(f"Referral reward added: {reward:.2f} RUB to user {referrer_id}")
                 
                 try:
                     referrer_username = user_data.get('username', 'пользователь')
@@ -1803,10 +1781,8 @@ async def process_successful_payment(bot: Bot, metadata: dict):
                 except Exception as e:
                     logger.warning(f"Could not send referral reward notification to {referrer_id}: {e}")
 
-        update_user_stats(user_id, price, months)
-        
+        # 5. Логируем транзакцию
         user_info = get_user(user_id)
-
         internal_payment_id = str(uuid.uuid4())
         
         log_username = user_info.get('username', 'N/A') if user_info else 'N/A'
@@ -1818,7 +1794,9 @@ async def process_successful_payment(bot: Bot, metadata: dict):
             "plan_id": metadata.get('plan_id'),
             "plan_name": get_plan_by_id(metadata.get('plan_id')).get('plan_name', 'Unknown') if get_plan_by_id(metadata.get('plan_id')) else 'Unknown',
             "host_name": metadata.get('host_name'),
-            "customer_email": metadata.get('customer_email')
+            "customer_email": metadata.get('customer_email'),
+            "sub_uuid": sub_uuid,
+            "action": action
         })
 
         log_transaction(
@@ -1833,30 +1811,49 @@ async def process_successful_payment(bot: Bot, metadata: dict):
             payment_method=log_method,
             metadata=log_metadata
         )
+        logger.info(f"Transaction logged: payment_id={internal_payment_id}")
         
+        # 6. Удаляем сообщение о обработке
         await processing_message.delete()
         
-        connection_string = result['connection_string']
-        new_expiry_date = datetime.fromtimestamp(result['expiry_timestamp_ms'] / 1000)
+        # 7. Формируем URL подписки
+        sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
         
-        all_user_keys = get_user_keys(user_id)
-        key_number = next((i + 1 for i, key in enumerate(all_user_keys) if key['key_id'] == key_id), len(all_user_keys))
-
-        final_text = get_purchase_success_text(
-            action="создан" if action == "new" else "продлен",
-            key_number=key_number,
-            expiry_date=new_expiry_date,
-            connection_string=connection_string
-        )
+        # 8. Формируем текст сообщения в зависимости от action
+        if action == "new":
+            final_text = (
+                f"🎉 <b>Подписка успешно {action_text}!</b>\n\n"
+                f"📅 <b>Срок действия:</b> {months} месяцев\n"
+                f"💰 <b>Сумма:</b> {price:.2f} RUB\n\n"
+                f"✅ <b>Ваша персональная ссылка на подписку:</b>\n"
+                f"<code>{sub_url}</code>\n\n"
+                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.\n\n"
+                f"⚠️ <b>Внимание:</b> Ссылка содержит ВСЕ ваши активные ключи на всех серверах."
+            )
+        elif action == "extend":
+            final_text = (
+                f"🎉 <b>Подписка успешно {action_text}!</b>\n\n"
+                f"📅 <b>Добавлено:</b> {months} месяцев\n"
+                f"💰 <b>Сумма:</b> {price:.2f} RUB\n\n"
+                f"✅ <b>Обновленная ссылка на подписку:</b>\n"
+                f"<code>{sub_url}</code>\n\n"
+                f"📎 Используйте эту ссылку в вашем клиенте.\n\n"
+                f"⚠️ <b>Внимание:</b> Подписка автоматически обновилась и содержит все ваши активные ключи."
+            )
         
+        # 9. Отправляем пользователю
         await bot.send_message(
             chat_id=user_id,
             text=final_text,
-            reply_markup=keyboards.create_key_info_keyboard(key_id)
+            parse_mode="HTML",
+            reply_markup=keyboards.create_back_to_menu_keyboard()
         )
 
+        # 10. Уведомляем администратора
         await notify_admin_of_purchase(bot, metadata)
+        logger.info("=== END process_successful_payment SUCCESS ===")
         
     except Exception as e:
-        logger.error(f"Error processing payment for user {user_id} on host {host_name}: {e}", exc_info=True)
-        await processing_message.edit_text("❌ Ошибка при выдаче ключа.")
+        logger.error(f"Error processing payment for user {user_id}: {e}", exc_info=True)
+        await processing_message.edit_text("❌ Ошибка при обработке платежа.")
+        logger.error("=== END process_successful_payment ERROR ===")
