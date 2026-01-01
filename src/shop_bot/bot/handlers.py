@@ -240,7 +240,36 @@ def get_user_router() -> Router:
             await callback.message.answer(
                 "❌ Не удалось создать ссылку. Попробуйте позже.",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
+
             )
+    @user_router.callback_query(F.data == "get_full_subscription")
+    @registration_required
+    async def get_full_subscription_handler(callback: types.CallbackQuery):
+        user_id = callback.from_user.id
+        await callback.answer("Генерируем ссылку на подписку...", show_alert=True)
+
+        try:
+            # Генерируем или получаем UUID подписки
+            sub_uuid = create_subscription_link(user_id)
+
+            # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
+            YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
+
+            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+
+            await callback.message.answer(
+                "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
+                f"<code>{sub_url}</code>\n\n"
+                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
+                parse_mode="HTML",
+                reply_markup=keyboards.create_back_to_menu_keyboard()
+            )
+
+        except Exception as e:
+            logger.error(f"Ошибка при создании ссылки для {user_id}: {e}", exc_info=True)
+            await callback.message.answer(
+                "❌ Не удалось создать ссылку. Попробуйте позже.",
+                reply_markup=keyboards.create_back_to_menu_keyboard())
 
     @user_router.callback_query(Onboarding.waiting_for_subscription_and_agreement, F.data == "check_subscription_and_agree")
     async def check_subscription_handler(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
