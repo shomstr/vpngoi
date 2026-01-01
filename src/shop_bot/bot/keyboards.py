@@ -79,7 +79,6 @@ def create_host_selection_keyboard(hosts: list, action: str) -> InlineKeyboardMa
     for host in hosts:
         callback_data = f"select_host_{action}_{host['host_name']}"
         builder.button(text=host['host_name'], callback_data=callback_data)
-    builder.button(text="🌐 Подписка на все серверы", callback_data="get_full_subscription")
     builder.button(text="⬅️ Назад", callback_data="manage_keys" if action == 'new' else "back_to_main_menu")
     builder.adjust(1)
     return builder.as_markup()
@@ -118,6 +117,9 @@ def create_payment_method_keyboard(payment_methods: dict, action: str, key_id: i
         logger.info(f"Creating TON button with callback_data: '{callback_data_ton}'")
         builder.button(text="🪙 TON Connect", callback_data=callback_data_ton)
 
+    
+    builder.button(text="⭐️ Telegram Stars", callback_data="pay_stars")
+
     builder.button(text="⬅️ Назад", callback_data="back_to_email_prompt")
     builder.adjust(1)
     return builder.as_markup()
@@ -141,7 +143,6 @@ def create_keys_management_keyboard(keys: list) -> InlineKeyboardMarkup:
             host_name = key.get('host_name', 'Неизвестный хост')
             button_text = f"{status_icon} Ключ #{i+1} ({host_name}) (до {expiry_date.strftime('%d.%m.%Y')})"
             builder.button(text=button_text, callback_data=f"show_key_{key['key_id']}")
-    builder.button(text="📤 Получить подписку на все ключи", callback_data="get_unified_subscription")
     builder.button(text="➕ Купить новый ключ", callback_data="buy_new_key")
     builder.button(text="⬅️ Назад в меню", callback_data="back_to_main_menu")
     builder.adjust(1)
@@ -215,4 +216,3 @@ def get_main_menu_button() -> InlineKeyboardButton:
 
 def get_buy_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_vpn")
-

@@ -11,6 +11,8 @@ import asyncio
 import yaml
 
 
+from aiogram.types import Message, CallbackQuery, PreCheckoutQuery
+
 from urllib.parse import urlencode
 from hmac import compare_digest
 from functools import wraps
@@ -51,11 +53,25 @@ from shop_bot.config import (
     get_key_info_text, CHOOSE_PAYMENT_METHOD_MESSAGE, get_purchase_success_text
 )
 
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+
 TELEGRAM_BOT_USERNAME = None
 PAYMENT_METHODS = None
 ADMIN_ID = None
 CRYPTO_BOT_TOKEN = get_setting("cryptobot_token")
+def get_stars_payment(stars_count: int, month: str) -> list[LabeledPrice]:
+    return [
+        LabeledPrice(label=f"Покупка премиума на {month}", amount=stars_count),
+    ]
 
+
+def get_stars_for_months(months: int) -> int:
+    """Конвертирует месяцы в количество Stars"""
+    # Примерная конвертация: 1 месяц = 100 Stars (≈ 1 USD)
+    # Настроить под ваши тарифы
+    base_price = 1  # Базовая стоимость в Stars
+    return base_price * months
 logger = logging.getLogger(__name__)
 admin_router = Router()
 user_router = Router()
@@ -1253,6 +1269,189 @@ def get_user_router() -> Router:
             logger.error(f"Failed to generate TON Connect link for user {user_id}: {e}", exc_info=True)
             await callback.message.answer("❌ Не удалось создать ссылку для TON Connect. Попробуйте позже.")
             await state.clear()
+    @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_stars")
+    async def buy_premium_stars_handler(callback: types.CallbackQuery, state: FSMContext):
+        """Обработчик оплаты через Telegram Stars"""
+        await callback.answer("Создаю счет для оплаты через Stars...")
+        
+        try:
+            # Получаем данные из состояния
+            data = await state.get_data()
+            user_id = callback.from_user.id
+            
+            plan_id = data.get('plan_id')
+            if not plan_id:
+                await callback.message.answer("❌ Произошла ошибка: данные о тарифе не найдены.")
+                await state.clear()
+                return
+            
+            # Получаем информацию о тарифе
+            plan = get_plan_by_id(plan_id)
+            if not plan:
+                await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
+                await state.clear()
+                return
+            
+            months = plan['months']
+            
+            # Определяем текст для описания
+            if months == 1:
+                month = "месяц"
+            elif months == 3:
+                month = "3 месяца"
+            elif months == 6:
+                month = "6 месяцев"
+            elif months == 12:
+                month = "1 год"
+            else:
+                month = f"{months} месяцев"
+            
+            # Очищаем состояние ПЕРЕД отправкой инвойса
+            await state.clear()
+            
+            # Создаем payload - ВАЖНО: создаем строку Python словаря
+            # Именно такой формат работает в вашем примере
+            payload = {"user_id": user_id, "plan_id": plan_id, "months": months}
+            
+            # Преобразуем в строку Python словаря (не JSON!)
+            payload_str = str(payload)
+            logger.info(f"Stars payload string: {payload_str}")
+            logger.info(f"Stars payload type: {type(payload_str)}")
+            
+            # Определяем стоимость в Stars (258 Stars ≈ $2.58 ≈ 250 руб)
+            stars_per_month = 1
+            stars_count = stars_per_month * months
+            
+            # Удаляем предыдущее сообщение с выбором оплаты
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            # Отправляем инвойс
+            result = await callback.message.answer_invoice(
+                title=f"Подписка на {month}",
+                description="Пожалуйста, оплатите счет по кнопке ниже.",
+                currency="XTR",
+                prices=get_stars_payment(stars_count, month),
+                payload=payload_str,
+                provider_token="",  # Для Stars обязательно пустая строка
+            )
+            
+            logger.info(f"Invoice sent successfully. Message ID: {result.message_id}")
+            
+        except Exception as e:
+            logger.error(f"Error creating Telegram Stars invoice for user {callback.from_user.id}: {e}", exc_info=True)
+            await callback.message.answer("❌ Не удалось создать счет для оплаты через Stars. Попробуйте другой способ оплаты.")
+            await state.clear()
+
+    @user_router.pre_checkout_query()
+    async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
+        """Обработчик предварительной проверки платежа"""
+        try:
+            logger.info(f"Pre-checkout query: {pre_checkout_query.id}, payload: {pre_checkout_query.invoice_payload}")
+            # Всегда подтверждаем pre-checkout для Stars
+            await pre_checkout_query.answer(ok=True)
+        except Exception as e:
+            logger.error(f"Error in pre_checkout_handler: {e}")
+            await pre_checkout_query.answer(ok=False, error_message="Произошла ошибка")
+
+    @user_router.message(F.successful_payment, F.successful_payment.currency == "XTR")
+    async def on_successful_payment_stars(message: Message, bot: Bot):
+        """Обработчик успешного платежа через Stars"""
+        successful_payment = message.successful_payment
+        
+        logger.info(f"Successful Stars payment received from user {message.from_user.id}")
+        logger.info(f"Payment payload: {successful_payment.invoice_payload}")
+        logger.info(f"Payment amount: {successful_payment.total_amount} {successful_payment.currency}")
+        
+        try:
+            # Парсим payload - ВАЖНО: используем метод из рабочего кода
+            payload_str = successful_payment.invoice_payload
+            
+            # Преобразуем строку Python словаря в JSON
+            # Рабочий код использует: payload_str.replace("'", '"')
+            payload_json = payload_str.replace("'", '"')
+            
+            logger.info(f"Payload after replace: {payload_json}")
+            
+            try:
+                metadata = json.loads(payload_json)
+                logger.info(f"Successfully parsed metadata: {metadata}")
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {e}")
+                # Если не получается, пробуем eval (осторожно!)
+                try:
+                    metadata = eval(payload_str)  # Только для доверенных данных
+                    logger.info(f"Parsed with eval: {metadata}")
+                except:
+                    metadata = {
+                        "user_id": message.from_user.id,
+                        "months": 1,
+                        "payment_method": "Telegram Stars"
+                    }
+                    logger.warning(f"Could not parse payload, using default: {metadata}")
+            
+            # Получаем user_id из payload
+            user_id = metadata.get('user_id')
+            
+            # Если платеж сделан за другого пользователя
+            if user_id and int(user_id) != message.from_user.id:
+                metadata['paid_by'] = message.from_user.id
+                target_user_id = int(user_id)
+            else:
+                target_user_id = message.from_user.id
+                metadata['user_id'] = target_user_id
+            
+            # Получаем данные о тарифе
+            plan_id = metadata.get('plan_id')
+            if plan_id:
+                plan = get_plan_by_id(plan_id)
+                if plan:
+                    metadata['months'] = plan['months']
+                    metadata['price'] = float(plan['price'])
+                    metadata['plan_name'] = plan.get('plan_name', 'Unknown')
+            
+            # Добавляем обязательные поля
+            metadata['chat_id'] = message.chat.id
+            metadata['message_id'] = message.message_id
+            metadata['action'] = metadata.get('action', 'new')
+            metadata['key_id'] = metadata.get('key_id', 0)
+            metadata['host_name'] = metadata.get('host_name', 'default')
+            metadata['customer_email'] = metadata.get('customer_email', '')
+            metadata['payment_method'] = 'Telegram Stars'
+            
+            # Если цена не определена, используем примерную конвертацию
+            if 'price' not in metadata:
+                # 258 Stars ≈ 250 руб
+                stars_amount = successful_payment.total_amount / 100  # переводим в Stars
+                metadata['price'] = stars_amount * 250 / 258
+                logger.info(f"Estimated price: {metadata['price']} RUB for {stars_amount} Stars")
+            
+            # Проверяем обязательные поля
+            required_fields = ['user_id', 'months', 'price']
+            for field in required_fields:
+                if field not in metadata:
+                    logger.error(f"Missing required field: {field} in metadata: {metadata}")
+                    await message.answer("❌ Ошибка в данных платежа. Обратитесь в поддержку.")
+                    return
+            
+            # Обрабатываем платеж
+            await process_successful_payment(bot, metadata)
+            
+        except Exception as e:
+            logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
+            await message.answer("❌ Ошибка при обработке платежа. Обратитесь в поддержку.")
+
+    # Добавьте этот обработчик для отладки всех successful_payment
+    @user_router.message(F.successful_payment)
+    async def debug_all_payments(message: Message):
+        """Отладочный обработчик всех successful_payment"""
+        successful_payment = message.successful_payment
+        logger.info(f"DEBUG ALL PAYMENTS - Currency: {successful_payment.currency}")
+        logger.info(f"DEBUG ALL PAYMENTS - Payload: {successful_payment.invoice_payload}")
+        logger.info(f"DEBUG ALL PAYMENTS - Type: {type(successful_payment.invoice_payload)}")
+
 
         @user_router.message(F.text)
         @registration_required
