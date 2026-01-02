@@ -160,13 +160,7 @@ def get_user_router() -> Router:
         username = message.from_user.username or message.from_user.full_name
         user_data = get_user(user_id)
 
-        if user_data and user_data.get('agreed_to_terms'):
-            await message.answer(
-                f"👋 Снова здравствуйте, {html.bold(message.from_user.full_name)}!",
-                reply_markup=keyboards.main_reply_keyboard
-            )
-            await show_main_menu(message)
-            return
+        
 
         terms_url = get_setting("terms_url")
         privacy_url = get_setting("privacy_url")
@@ -200,7 +194,7 @@ def get_user_router() -> Router:
 
         welcome_parts.append("\nПосле этого нажмите кнопку ниже.")
         final_text = "\n".join(welcome_parts)
-        
+        await message.answer_sticker("CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
         await message.answer(
             final_text,
             reply_markup=keyboards.create_welcome_keyboard(
@@ -232,7 +226,7 @@ def get_user_router() -> Router:
             await callback.message.answer(
                 "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
                 f"<code>{sub_url}</code>\n\n"
-                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
+                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
@@ -262,7 +256,7 @@ def get_user_router() -> Router:
             await callback.message.answer(
                 "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
                 f"<code>{sub_url}</code>\n\n"
-                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
+                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
@@ -1483,7 +1477,7 @@ def get_user_router() -> Router:
             await message.answer(
                 "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
                 f"<code>{sub_url}</code>\n\n"
-                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
+                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
@@ -1847,7 +1841,7 @@ async def process_successful_payment(bot: Bot, metadata: dict):
                 f"💰 <b>Сумма:</b> {price:.2f} RUB\n\n"
                 f"✅ <b>Ваша персональная ссылка на подписку:</b>\n"
                 f"<code>{sub_url}</code>\n\n"
-                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.\n\n"
+                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.\n\n"
                 f"⚠️ <b>Внимание:</b> Ссылка содержит ВСЕ ваши активные ключи на всех серверах."
             )
         elif action == "extend":
