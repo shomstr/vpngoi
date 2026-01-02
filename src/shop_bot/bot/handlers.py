@@ -886,12 +886,13 @@ def get_user_router() -> Router:
         await state.update_data(
             action="new",
             key_id=0,
-            host_name="all_servers",  # флаг для обработки
-            plan_id=0,                # не используется, но нужен в метаданных
+            host_name="all_servers",
+            plan_id=0,  # оставим для совместимости, но не используем
             months=1,
-            price_rub=280.0,
+            price_rub=99.0,
             price_stars=99,
-            price_ton=2.0
+            price_ton=2.0,
+            price_usd=3.0
         )
         await callback.message.edit_text(
             "📧 Хотите указать email для чека? Если нет — продолжите без него.",
@@ -1026,48 +1027,19 @@ def get_user_router() -> Router:
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_yookassa")
     async def create_yookassa_payment_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю ссылку на оплату...")
-        
         data = await state.get_data()
-        user_data = get_user(callback.from_user.id)
-        
-        plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
-
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        # Если это покупка "всех серверов"
-        if data.get('host_name') == "all_servers":
-            price_rub = Decimal(str(data.get('price_rub', 280.0)))
-        else:
-            base_price = Decimal(str(plan['price']))
-            price_rub = base_price
-            if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-                discount_percentage_str = get_setting("referral_discount") or "0"
-                discount_percentage = Decimal(discount_percentage_str)
-                if discount_percentage > 0:
-                    discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                    price_rub = base_price - discount_amount
-
-        plan_id = data.get('plan_id')
+        user_id = callback.from_user.id
         customer_email = data.get('customer_email')
-        host_name = data.get('host_name')
-        action = data.get('action')
-        key_id = data.get('key_id')
-        
         if not customer_email:
             customer_email = get_setting("receipt_email")
 
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        months = plan['months']
-        user_id = callback.from_user.id
+        # 🔥 ФИКС: 99 RUB
+        price_rub = Decimal("99.00")
+        months = 1
+        action = data.get('action', 'new')
+        key_id = data.get('key_id', 0)
+        host_name = "all_servers"
+        plan_id = 0
 
         try:
             price_str_for_api = f"{price_rub:.2f}"
@@ -1084,15 +1056,21 @@ def get_user_router() -> Router:
                         "vat_code": "1"
                     }]
                 }
+
             payment_payload = {
                 "amount": {"value": price_str_for_api, "currency": "RUB"},
                 "confirmation": {"type": "redirect", "return_url": f"https://t.me/{TELEGRAM_BOT_USERNAME}"},
                 "capture": True,
-                "description": f"Подписка на {months} мес.",
+                "description": "Фиксированная подписка на 1 месяц",
                 "metadata": {
-                    "user_id": user_id, "months": months, "price": price_float_for_metadata, 
-                    "action": action, "key_id": key_id, "host_name": host_name,
-                    "plan_id": plan_id, "customer_email": customer_email,
+                    "user_id": user_id,
+                    "months": months,
+                    "price": price_float_for_metadata,
+                    "action": action,
+                    "key_id": key_id,
+                    "host_name": host_name,
+                    "plan_id": plan_id,
+                    "customer_email": customer_email,
                     "payment_method": "YooKassa"
                 }
             }
@@ -1100,157 +1078,107 @@ def get_user_router() -> Router:
                 payment_payload['receipt'] = receipt
 
             payment = Payment.create(payment_payload, uuid.uuid4())
-            
             await state.clear()
-            
             await callback.message.edit_text(
                 "Нажмите на кнопку ниже для оплаты:",
                 reply_markup=keyboards.create_payment_keyboard(payment.confirmation.confirmation_url)
             )
         except Exception as e:
             logger.error(f"Failed to create YooKassa payment: {e}", exc_info=True)
-            await callback.message.answer("Не удалось создать ссылку на оплату.")
+            await callback.message.answer("❌ Не удалось создать ссылку на оплату.")
             await state.clear()
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
     async def create_cryptobot_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счет в Crypto Pay...")
-        
         data = await state.get_data()
-        user_data = get_user(callback.from_user.id)
-        
-        plan_id = data.get('plan_id')
-        user_id = data.get('user_id', callback.from_user.id)
+        user_id = callback.from_user.id
         customer_email = data.get('customer_email')
-        host_name = data.get('host_name')
-        action = data.get('action')
-        key_id = data.get('key_id')
-
         cryptobot_token = get_setting('cryptobot_token')
         if not cryptobot_token:
-            logger.error(f"Attempt to create Crypto Pay invoice failed for user {user_id}: cryptobot_token is not set.")
-            await callback.message.edit_text("❌ Оплата криптовалютой временно недоступна. (Администратор не указал токен).")
+            logger.error(f"CryptoBot token not set for user {user_id}")
+            await callback.message.edit_text("❌ Оплата криптовалютой временно недоступна.")
             await state.clear()
             return
 
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            logger.error(f"Attempt to create Crypto Pay invoice failed for user {user_id}: Plan with id {plan_id} not found.")
-            await callback.message.edit_text("❌ Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-        
-        plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
+        # 🔥 ФИКС: 3 USD = 3.00 USDT
+        price_usdt = Decimal("3.00")
+        months = 1
+        action = data.get('action', 'new')
+        key_id = data.get('key_id', 0)
+        host_name = "all_servers"
+        plan_id = 0
 
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        base_price = Decimal(str(plan['price']))
-        price_rub = base_price
-
-        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-            discount_percentage_str = get_setting("referral_discount") or "0"
-            discount_percentage = Decimal(discount_percentage_str)
-            if discount_percentage > 0:
-                discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                price_rub = base_price - discount_amount
-        months = plan['months']
-        
         try:
-            exchange_rate = await get_usdt_rub_rate()
-
-            if not exchange_rate:
-                logger.warning("Failed to get live exchange rate. Falling back to the rate from settings.")
-                if not exchange_rate:
-                    await callback.message.edit_text("❌ Не удалось получить курс валют. Попробуйте позже.")
-                    await state.clear()
-                    return
-
-            margin = Decimal("1.03")
-            price_usdt = (price_rub / exchange_rate * margin).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            
-            logger.info(f"Creating Crypto Pay invoice for user {user_id}. Plan price: {price_rub} RUB. Converted to: {price_usdt} USDT.")
-
             crypto = CryptoPay(cryptobot_token)
-            
-            payload_data = f"{user_id}:{months}:{float(price_rub)}:{action}:{key_id}:{host_name}:{plan_id}:{customer_email}:CryptoBot"
+            payload_data = f"{user_id}:{months}:{99.0}:{action}:{key_id}:{host_name}:{plan_id}:{customer_email}:CryptoBot"
 
             invoice = await crypto.create_invoice(
-                currency_type="fiat",
-                fiat="RUB",
-                amount=float(price_rub),
-                description=f"Подписка на {months} мес.",
+                currency_type="crypto",
+                asset="USDT",
+                amount=float(price_usdt),
+                description="Фиксированная подписка на 1 месяц (3$)",
                 payload=payload_data,
                 expires_in=3600
             )
-            
+
             if not invoice or not invoice.pay_url:
-                raise Exception("Failed to create invoice or pay_url is missing.")
+                raise Exception("No pay_url in invoice")
 
             await callback.message.edit_text(
                 "Нажмите на кнопку ниже для оплаты:",
                 reply_markup=keyboards.create_payment_keyboard(invoice.pay_url)
             )
             await state.clear()
-
         except Exception as e:
             logger.error(f"Failed to create Crypto Pay invoice for user {user_id}: {e}", exc_info=True)
-            await callback.message.edit_text(f"❌ Не удалось создать счет для оплаты криптовалютой.\n\n<pre>Ошибка: {e}</pre>")
+            await callback.message.edit_text(f"❌ Не удалось создать счет для оплаты криптовалютой.<pre>Ошибка: {e}</pre>")
             await state.clear()
         
+    
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
     async def create_heleket_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счет Heleket...")
-        
         data = await state.get_data()
-        plan = get_plan_by_id(data.get('plan_id'))
-        user_data = get_user(callback.from_user.id)
-        
-        if not plan:
-            await callback.message.edit_text("❌ Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
+        user_id = callback.from_user.id
+        customer_email = data.get('customer_email')
 
-        plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
+        # 🔥 ФИКС: 99 RUB
+        price_rub = Decimal("99.00")
+        months = 1
+        action = data.get('action', 'new')
+        key_id = data.get('key_id', 0)
+        host_name = "all_servers"
+        plan_id = 0
 
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        base_price = Decimal(str(plan['price']))
-        price_rub_decimal = base_price
-
-        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-            discount_percentage_str = get_setting("referral_discount") or "0"
-            discount_percentage = Decimal(discount_percentage_str)
-            if discount_percentage > 0:
-                discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                price_rub_decimal = base_price - discount_amount
-        months = plan['months']
-        
-        final_price_float = float(price_rub_decimal)
-
-        pay_url = await _create_heleket_payment_request(
-            user_id=callback.from_user.id,
-            price=final_price_float,
-            months=plan['months'],
-            host_name=data.get('host_name'),
-            state_data=data
-        )
-        
-        if pay_url:
-            await callback.message.edit_text(
-                "Нажмите на кнопку ниже для оплаты:",
-                reply_markup=keyboards.create_payment_keyboard(pay_url)
+        try:
+            pay_url = await _create_heleket_payment_request(
+                user_id=user_id,
+                price=float(price_rub),
+                months=months,
+                host_name=host_name,
+                state_data={
+                    'action': action,
+                    'key_id': key_id,
+                    'host_name': host_name,
+                    'plan_id': plan_id,
+                    'customer_email': customer_email
+                }
             )
+            if pay_url:
+                await callback.message.edit_text(
+                    "Нажмите на кнопку ниже для оплаты:",
+                    reply_markup=keyboards.create_payment_keyboard(pay_url)
+                )
+                await state.clear()
+            else:
+                await callback.message.edit_text("❌ Не удалось создать счет Heleket.")
+                await state.clear()
+        except Exception as e:
+            logger.error(f"Heleket error for user {user_id}: {e}", exc_info=True)
+            await callback.message.edit_text("❌ Ошибка при создании счета Heleket.")
             await state.clear()
-        else:
-            await callback.message.edit_text("❌ Не удалось создать счет Heleket. Попробуйте другой способ оплаты.")
+
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_tonconnect")
     async def create_ton_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -1258,45 +1186,46 @@ def get_user_router() -> Router:
         data = await state.get_data()
         user_id = callback.from_user.id
         wallet_address = get_setting("ton_wallet_address")
-        plan = get_plan_by_id(data.get('plan_id'))
-        
-        if not wallet_address or not plan:
+        if not wallet_address:
             await callback.message.edit_text("❌ Оплата через TON временно недоступна.")
             await state.clear()
             return
 
         await callback.answer("Создаю ссылку и QR-код для TON Connect...")
-            
-        price_rub = Decimal(str(data.get('final_price', plan['price'])))
 
-        usdt_rub_rate = await get_usdt_rub_rate()
-        ton_usdt_rate = await get_ton_usdt_rate()
-
-        if not usdt_rub_rate or not ton_usdt_rate:
-            await callback.message.edit_text("❌ Не удалось получить курс TON. Попробуйте позже.")
-            await state.clear()
-            return
-
-        price_ton = (price_rub / usdt_rub_rate / ton_usdt_rate).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
-        amount_nanoton = int(price_ton * 1_000_000_000)
-        
-        payment_id = str(uuid.uuid4())
-        metadata = {
-            "user_id": user_id, "months": plan['months'], "price": float(price_rub),
-            "action": data.get('action'), "key_id": data.get('key_id'),
-            "host_name": data.get('host_name'), "plan_id": data.get('plan_id'),
-            "customer_email": data.get('customer_email'), "payment_method": "TON Connect"
-        }
-        create_pending_transaction(payment_id, user_id, float(price_rub), metadata)
-
-        transaction_payload = {
-            'messages': [{'address': wallet_address, 'amount': str(amount_nanoton), 'payload': payment_id}],
-            'valid_until': int(datetime.now().timestamp()) + 600
-        }
+        # 🔥 ФИКС: 2 TON
+        price_ton = Decimal("2.000")
+        months = 1
+        action = data.get('action', 'new')
+        key_id = data.get('key_id', 0)
+        host_name = "all_servers"
+        plan_id = 0
+        customer_email = data.get('customer_email')
 
         try:
+            amount_nanoton = int(price_ton * 1_000_000_000)  # 2_000_000_000 nanoton
+            payment_id = str(uuid.uuid4())
+
+            metadata = {
+                "user_id": user_id,
+                "months": months,
+                "price": 99.0,
+                "action": action,
+                "key_id": key_id,
+                "host_name": host_name,
+                "plan_id": plan_id,
+                "customer_email": customer_email,
+                "payment_method": "TON Connect"
+            }
+            create_pending_transaction(payment_id, user_id, 99.0, metadata)
+
+            transaction_payload = {
+                'messages': [{'address': wallet_address, 'amount': str(amount_nanoton), 'payload': payment_id}],
+                'valid_until': int(datetime.now().timestamp()) + 600
+            }
+
             connect_url = await _start_ton_connect_process(user_id, transaction_payload)
-            
+
             qr_img = qrcode.make(connect_url)
             bio = BytesIO()
             qr_img.save(bio, "PNG")
@@ -1306,95 +1235,73 @@ def get_user_router() -> Router:
             await callback.message.answer_photo(
                 photo=qr_file,
                 caption=(
-                    f"💎 **Оплата через TON Connect**\n\n"
-                    f"Сумма к оплате: `{price_ton}` **TON**\n\n"
+                    f"💎 **Оплата через TON Connect**\n"
+                    f"Сумма к оплате: `{price_ton}` **TON**\n"
                     f"✅ **Способ 1 (на телефоне):** Нажмите кнопку **'Открыть кошелек'** ниже.\n"
-                    f"✅ **Способ 2 (на компьютере):** Отсканируйте QR-код кошельком.\n\n"
+                    f"✅ **Способ 2 (на компьютере):** Отсканируйте QR-код кошельком.\n"
                     f"После подключения кошелька подтвердите транзакцию."
                 ),
                 parse_mode="Markdown",
                 reply_markup=keyboards.create_ton_connect_keyboard(connect_url)
             )
             await state.clear()
-
         except Exception as e:
-            logger.error(f"Failed to generate TON Connect link for user {user_id}: {e}", exc_info=True)
-            await callback.message.answer("❌ Не удалось создать ссылку для TON Connect. Попробуйте позже.")
+            logger.error(f"TON Connect error for user {user_id}: {e}", exc_info=True)
+            await callback.message.answer("❌ Не удалось создать ссылку для TON Connect.")
             await state.clear()
+
+            
+    
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_stars")
     async def buy_premium_stars_handler(callback: types.CallbackQuery, state: FSMContext):
         """Обработчик оплаты через Telegram Stars"""
         await callback.answer("Создаю счет для оплаты через Stars...")
-        
         try:
-            # Получаем данные из состояния
             data = await state.get_data()
             user_id = callback.from_user.id
-            
-            plan_id = data.get('plan_id')
-            if not plan_id:
-                await callback.message.answer("❌ Произошла ошибка: данные о тарифе не найдены.")
-                await state.clear()
-                return
-            
-            # Получаем информацию о тарифе
-            plan = get_plan_by_id(plan_id)
-            if not plan:
-                await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
-                await state.clear()
-                return
-            
-            months = plan['months']
-            
-            # Определяем текст для описания
-            if months == 1:
-                month = "месяц"
-            elif months == 3:
-                month = "3 месяца"
-            elif months == 6:
-                month = "6 месяцев"
-            elif months == 12:
-                month = "1 год"
-            else:
-                month = f"{months} месяцев"
-            
-            # Очищаем состояние ПЕРЕД отправкой инвойса
+
+            # 🔥 ФИКС: 99 Stars
+            stars_count = 99
+            months = 1
+            action = data.get('action', 'new')
+            key_id = data.get('key_id', 0)
+            host_name = "all_servers"
+            plan_id = 0
+            customer_email = data.get('customer_email')
+
+            # Очищаем состояние
             await state.clear()
-            
-            # Создаем payload - ВАЖНО: создаем строку Python словаря
-            # Именно такой формат работает в вашем примере
-            payload = {"user_id": user_id, "plan_id": plan_id, "months": months}
-            
-            # Преобразуем в строку Python словаря (не JSON!)
-            payload_str = str(payload)
-            logger.info(f"Stars payload string: {payload_str}")
-            logger.info(f"Stars payload type: {type(payload_str)}")
-            
-            # Определяем стоимость в Stars (258 Stars ≈ $2.58 ≈ 250 руб)
-            stars_per_month = 1
-            stars_count = stars_per_month * months
-            
-            # Удаляем предыдущее сообщение с выбором оплаты
+
+            # payload как *строка Python dict* — так сделано в вашем коде, и это работает
+            payload = {
+                "user_id": user_id,
+                "months": months,
+                "price": 99.0,
+                "action": action,
+                "key_id": key_id,
+                "host_name": host_name,
+                "plan_id": plan_id,
+                "customer_email": customer_email,
+                "payment_method": "Telegram Stars"
+            }
+            payload_str = str(payload)  # ← ВАЖНО: не json.dumps
+
             try:
                 await callback.message.delete()
             except:
                 pass
-            
-            # Отправляем инвойс
-            result = await callback.message.answer_invoice(
-                title=f"Подписка на {month}",
-                description="Пожалуйста, оплатите счет по кнопке ниже.",
+
+            await callback.message.answer_invoice(
+                title="Подписка на 1 месяц",
+                description="Фиксированная подписка: 1 месяц за 99 Stars",
                 currency="XTR",
-                prices=get_stars_payment(stars_count, month),
+                prices=get_stars_payment(stars_count, "1 месяц"),
                 payload=payload_str,
-                provider_token="",  # Для Stars обязательно пустая строка
+                provider_token=""
             )
-            
-            logger.info(f"Invoice sent successfully. Message ID: {result.message_id}")
-            
         except Exception as e:
-            logger.error(f"Error creating Telegram Stars invoice for user {callback.from_user.id}: {e}", exc_info=True)
-            await callback.message.answer("❌ Не удалось создать счет для оплаты через Stars. Попробуйте другой способ оплаты.")
+            logger.error(f"Stars error for user {callback.from_user.id}: {e}", exc_info=True)
+            await callback.message.answer("❌ Ошибка при создании инвойса через Stars.")
             await state.clear()
 
     @user_router.pre_checkout_query()
