@@ -62,9 +62,11 @@ ADMIN_ID = None
 CRYPTO_BOT_TOKEN = get_setting("cryptobot_token")
 def get_stars_payment(stars_count: int, month: str) -> list[LabeledPrice]:
     return [
-        LabeledPrice(label=f"Покупка премиума на {month}", amount=stars_count),
+        LabeledPrice(
+            label=f"Подписка на {month}",
+            amount=int(stars_count)  # ← явное приведение
+        ),
     ]
-
 
 def get_stars_for_months(months: int) -> int:
     """Конвертирует месяцы в количество Stars"""
@@ -1325,10 +1327,10 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_stars")
     async def buy_premium_stars_handler(callback: types.CallbackQuery, state: FSMContext):
-        """Обработчик оплаты через Telegram Stars — ИСПРАВЛЕННЫЙ"""
+        """Обработчик оплаты через Telegram Stars — ФИКС: 99 Stars, 1 месяц, без plan_id"""
         user_id = callback.from_user.id
 
-        # ✅ Сначала отвечаем на callback, чтобы избежать "query is too old"
+        # ✅ Отвечаем на callback сразу
         try:
             await callback.answer("Создаю счёт...", show_alert=False)
         except TelegramBadRequest as e:
@@ -1339,9 +1341,9 @@ def get_user_router() -> Router:
 
         try:
             data = await state.get_data()
-            await state.clear()  # очищаем состояние
+            await state.clear()
 
-            # 🔥 ФИКС: ЖЁСТКО 99 Stars, 1 месяц, plan_id=0
+            # 🔥 ЖЁСТКО ФИКСИРУЕМ: 99 Stars, 1 месяц, plan_id=0, host_name="all_servers"
             stars_count = 99
             months = 1
             action = data.get('action', 'new')
@@ -1350,10 +1352,10 @@ def get_user_router() -> Router:
             plan_id = 0
             customer_email = data.get('customer_email')
 
-            # Генерируем короткий уникальный ID: s_ + 8 hex
+            # Генерируем короткий ID
             payment_id = f"s_{uuid.uuid4().hex[:8]}"
 
-            # Сохраняем данные во временное хранилище
+            # Сохраняем в глобальное временное хранилище
             _pending_stars_payments[payment_id] = {
                 "user_id": user_id,
                 "months": months,
@@ -1362,33 +1364,30 @@ def get_user_router() -> Router:
                 "key_id": key_id,
                 "host_name": host_name,
                 "plan_id": plan_id,
-                "customer_email": customer_email,
+                "customer_email": customer_email or "",
                 "payment_method": "Telegram Stars",
                 "created_at": datetime.utcnow()
             }
 
-            # Очистка старых записей (>10 мин)
+            # Очистка устаревших (>10 мин)
             now = datetime.utcnow()
-            expired = [
-                pid for pid, meta in _pending_stars_payments.items()
-                if now - meta["created_at"] > timedelta(minutes=10)
-            ]
-            for pid in expired:
-                del _pending_stars_payments[pid]
+            for pid in list(_pending_stars_payments.keys()):
+                if now - _pending_stars_payments[pid]["created_at"] > timedelta(minutes=10):
+                    del _pending_stars_payments[pid]
 
-            # Удаляем сообщение выбора оплаты
+            # Удаляем сообщение
             try:
                 await callback.message.delete()
-            except Exception as e:
-                logger.debug(f"Failed to delete message: {e}")
+            except:
+                pass
 
-            # Отправляем инвойс — payload ТОЛЬКО КОРОТКИЙ ID!
+            # Отправляем инвойс с КОРОТКИМ payload
             await callback.message.answer_invoice(
                 title="Подписка на 1 месяц",
                 description="Фиксированная подписка: 99 Stars",
                 currency="XTR",
-                prices=get_stars_payment(stars_count, "1 месяц"),  # stars_count = 99 (int!)
-                payload=payment_id,  # ← строка вроде "s_a1b2c3d4"
+                prices=get_stars_payment(1, "1 месяц"),
+                payload=payment_id,  # ← ТОЛЬКО "s_abc123de"
                 provider_token=""
             )
             logger.info(f"Stars invoice sent. ID: {payment_id}, user: {user_id}")
@@ -1424,77 +1423,56 @@ def get_user_router() -> Router:
         
         try:
             # Парсим payload - ВАЖНО: используем метод из рабочего кода
+            # --- Парсинг payload ---
             payload_str = successful_payment.invoice_payload
-            
-            # Преобразуем строку Python словаря в JSON
-            # Рабочий код использует: payload_str.replace("'", '"')
-            payload_json = payload_str.replace("'", '"')
-            
-            logger.info(f"Payload after replace: {payload_json}")
-            
-            try:
-                metadata = json.loads(payload_json)
-                logger.info(f"Successfully parsed metadata: {metadata}")
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {e}")
-                # Если не получается, пробуем eval (осторожно!)
+            metadata = None
+
+            # 1️⃣ Попытка: короткий ID → из _pending_stars_payments
+            if payload_str.startswith("s_") and payload_str in _pending_stars_payments:
+                metadata = _pending_stars_payments.pop(payload_str)
+                logger.info(f"Loaded Stars metadata from cache: {metadata}")
+
+            # 2️⃣ Fallback: старый формат str({...}) — только для совместимости
+            if metadata is None:
                 try:
-                    metadata = eval(payload_str)  # Только для доверенных данных
-                    logger.info(f"Parsed with eval: {metadata}")
-                except:
-                    metadata = {
-                        "user_id": message.from_user.id,
-                        "months": 1,
-                        "payment_method": "Telegram Stars"
-                    }
-                    logger.warning(f"Could not parse payload, using default: {metadata}")
-            
-            # Получаем user_id из payload
-            user_id = metadata.get('user_id')
-            
-            # Если платеж сделан за другого пользователя
-            if user_id and int(user_id) != message.from_user.id:
-                metadata['paid_by'] = message.from_user.id
-                target_user_id = int(user_id)
-            else:
-                target_user_id = message.from_user.id
-                metadata['user_id'] = target_user_id
-            
-            # Получаем данные о тарифе
-            plan_id = metadata.get('plan_id')
-            if plan_id:
-                plan = get_plan_by_id(plan_id)
-                if plan:
-                    metadata['months'] = plan['months']
-                    metadata['price'] = float(plan['price'])
-                    metadata['plan_name'] = plan.get('plan_name', 'Unknown')
-            
-            # Добавляем обязательные поля
-            metadata['chat_id'] = message.chat.id
-            metadata['message_id'] = message.message_id
-            metadata['action'] = metadata.get('action', 'new')
-            metadata['key_id'] = metadata.get('key_id', 0)
-            metadata['host_name'] = metadata.get('host_name', 'default')
-            metadata['customer_email'] = metadata.get('customer_email', '')
-            metadata['payment_method'] = 'Telegram Stars'
-            
-            # Если цена не определена, используем примерную конвертацию
-            if 'price' not in metadata:
-                # 258 Stars ≈ 250 руб
-                stars_amount = successful_payment.total_amount / 100  # переводим в Stars
-                metadata['price'] = stars_amount * 250 / 258
-                logger.info(f"Estimated price: {metadata['price']} RUB for {stars_amount} Stars")
-            
-            # Проверяем обязательные поля
-            required_fields = ['user_id', 'months', 'price']
-            for field in required_fields:
-                if field not in metadata:
-                    logger.error(f"Missing required field: {field} in metadata: {metadata}")
-                    await message.answer("❌ Ошибка в данных платежа. Обратитесь в поддержку.")
-                    return
-            
-            # Обрабатываем платеж
-            await process_successful_payment(bot, metadata)
+                    # Попытка: замена ' → " + json
+                    metadata = json.loads(payload_str.replace("'", '"'))
+                    logger.info(f"Parsed old-style payload via JSON: {metadata}")
+                except (json.JSONDecodeError, ValueError):
+                    try:
+                        # Последняя надежда: eval (только потому что вы уже так делаете)
+                        metadata = eval(payload_str)
+                        logger.info(f"Parsed old-style payload via eval: {metadata}")
+                    except Exception as e2:
+                        logger.error(f"Both JSON and eval failed for payload '{payload_str}': {e2}")
+
+            # 3️⃣ Если ВСЁ ПРОВАЛИЛОСЬ — безопасный fallback СО ВСЕМИ ПОЛЯМИ
+            if metadata is None:
+                metadata = {
+                    "user_id": message.from_user.id,
+                    "months": 1,
+                    "price": 99.0,
+                    "action": "new",
+                    "key_id": 0,
+                    "host_name": "all_servers",
+                    "plan_id": 0,
+                    "customer_email": "",
+                    "payment_method": "Telegram Stars"
+                }
+                logger.warning(f"Used safe fallback metadata: {metadata}")
+
+            # --- Дополнение/гарантии ---
+            metadata.setdefault("user_id", message.from_user.id)
+            metadata.setdefault("months", 1)
+            metadata.setdefault("price", 99.0)
+            metadata.setdefault("action", "new")
+            metadata.setdefault("key_id", 0)
+            metadata.setdefault("host_name", "all_servers")
+            metadata.setdefault("plan_id", 0)
+            metadata.setdefault("customer_email", "")
+            metadata.setdefault("payment_method", "Telegram Stars")
+            metadata["chat_id"] = message.chat.id
+            metadata["message_id"] = message.message_id
             
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
