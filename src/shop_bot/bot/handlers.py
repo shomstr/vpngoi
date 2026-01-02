@@ -1473,6 +1473,7 @@ def get_user_router() -> Router:
             metadata.setdefault("payment_method", "Telegram Stars")
             metadata["chat_id"] = message.chat.id
             metadata["message_id"] = message.message_id
+            await message.answer("mds")
             
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
