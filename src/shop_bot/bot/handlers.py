@@ -1473,7 +1473,7 @@ def get_user_router() -> Router:
             metadata.setdefault("action", "new")
             metadata.setdefault("key_id", 0)
             metadata.setdefault("host_name", "all_servers")
-            metadata.setdefault("plan_id", 0)
+            metadata.setdefault("plan_id", 1)
             metadata.setdefault("customer_email", "")
             metadata.setdefault("payment_method", "Telegram Stars")
             metadata["chat_id"] = message.chat.id
