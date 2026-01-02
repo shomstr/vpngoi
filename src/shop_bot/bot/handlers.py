@@ -1105,7 +1105,7 @@ def get_user_router() -> Router:
         
         # ✅ Фиксированные значения — без plan_id, host_name, key_id
         months = 1
-        base_price_rub = Decimal("99.00")
+        base_price_rub = Decimal("1.00")
         customer_email = data.get('customer_email') or ""
 
         # Применяем реферальный дисконт (если первый платёж)
