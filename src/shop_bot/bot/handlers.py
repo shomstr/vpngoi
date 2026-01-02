@@ -1490,12 +1490,46 @@ def get_user_router() -> Router:
 
     # Добавьте этот обработчик для отладки всех successful_payment
     @user_router.message(F.successful_payment)
-    async def debug_all_payments(message: Message):
+    async def debug_all_payments(message: Message, bot: Bot):
         """Отладочный обработчик всех successful_payment"""
         successful_payment = message.successful_payment
         logger.info(f"DEBUG ALL PAYMENTS - Currency: {successful_payment.currency}")
         logger.info(f"DEBUG ALL PAYMENTS - Payload: {successful_payment.invoice_payload}")
         logger.info(f"DEBUG ALL PAYMENTS - Type: {type(successful_payment.invoice_payload)}")
+
+        sub_uuid = create_subscription_link(message.from_user.id)
+
+        # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
+        YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
+
+        sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+        user_id = message.from_user.id
+
+        now = datetime.utcnow()
+        expiry_date = now + timedelta(days=30 * 1)  # 30 дней на 1 месяц
+        key_number = get_next_key_number(user_id)
+
+        fake_uuid = str(uuid.uuid4())
+        key_email = f"user{user_id}-key{key_number}@bot.sub"
+
+        new_key_id = add_new_key(
+            user_id=user_id,
+            host_name="all_servers",
+            xui_client_uuid=fake_uuid,  # ← фиктивный UUID
+            key_email=key_email,
+            expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
+        )
+        logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
+
+        await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE")
+
+        await message.answer(
+            "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
+            f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
+            "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
+            parse_mode="HTML",
+            reply_markup=keyboards.create_back_to_menu_keyboard()
+        )
 
 
         @user_router.message(F.text)
