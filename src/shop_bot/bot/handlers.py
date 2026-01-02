@@ -194,7 +194,7 @@ def get_user_router() -> Router:
 
         welcome_parts.append("\nПосле этого нажмите кнопку ниже.")
         final_text = "\n".join(welcome_parts)
-        await message.answer_sticker("CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
+        await message.answer_sticker(sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
         await message.answer(
             final_text,
             reply_markup=keyboards.create_welcome_keyboard(
