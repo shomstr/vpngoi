@@ -193,10 +193,7 @@ def get_user_router() -> Router:
             welcome_parts.append("Также необходимо ознакомиться с нашими Условиями использования и Политикой конфиденциальности.")
 
         welcome_parts.append("\nПосле этого нажмите кнопку ниже.")
-        await bot.send_sticker(
-            chat_id=message.chat.id,
-            sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE"
-        )
+        await message.answer(sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
         final_text = "\n".join(welcome_parts)
         await message.answer(
             final_text,
