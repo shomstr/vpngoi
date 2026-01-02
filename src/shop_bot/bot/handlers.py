@@ -1473,7 +1473,20 @@ def get_user_router() -> Router:
             metadata.setdefault("payment_method", "Telegram Stars")
             metadata["chat_id"] = message.chat.id
             metadata["message_id"] = message.message_id
-            await message.answer("mds")
+            sub_uuid = create_subscription_link(message.from_user.id)
+
+            # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
+            YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
+
+            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+
+            await message.answer(
+                "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
+                f"<code>{sub_url}</code>\n\n"
+                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b> или <b>NekoBox</b>.",
+                parse_mode="HTML",
+                reply_markup=keyboards.create_back_to_menu_keyboard()
+            )
             
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
