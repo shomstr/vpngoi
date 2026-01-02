@@ -316,6 +316,10 @@ def get_user_router() -> Router:
     async def back_to_main_menu_handler(callback: types.CallbackQuery):
         await callback.answer()
         await show_main_menu(callback.message, edit_message=True)
+    
+    @user_router.callback_query(F.data=='d')
+    async def v(callback: types.CallbackQuery):
+        await callback.answer('‼️Ниже приведен список доступных серверов‼️')
 
     @user_router.callback_query(F.data == "show_profile")
     @registration_required
