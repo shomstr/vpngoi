@@ -96,7 +96,7 @@ class Broadcast(StatesGroup):
 
 class WithdrawStates(StatesGroup):
     waiting_for_details = State()
-
+_pending_stars_payments = {}
 def is_valid_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return re.match(pattern, email) is not None
@@ -1321,68 +1321,87 @@ def get_user_router() -> Router:
             logger.error(f"Failed to generate TON Connect link for user {user_id}: {e}", exc_info=True)
             await callback.message.answer("❌ Не удалось создать ссылку для TON Connect. Попробуйте позже.")
             await state.clear()
+   
+
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_stars")
     async def buy_premium_stars_handler(callback: types.CallbackQuery, state: FSMContext):
-        """Обработчик оплаты через Telegram Stars"""
-        await callback.answer("Создаю счет для оплаты через Stars...")
-        
+        """Обработчик оплаты через Telegram Stars — ИСПРАВЛЕННЫЙ"""
+        user_id = callback.from_user.id
+
+        # ✅ Сначала отвечаем на callback, чтобы избежать "query is too old"
         try:
-            # Получаем данные из состояния
+            await callback.answer("Создаю счёт...", show_alert=False)
+        except TelegramBadRequest as e:
+            if "query is too old" in str(e):
+                logger.warning(f"Callback expired for user {user_id}")
+                return
+            raise
+
+        try:
             data = await state.get_data()
-            user_id = callback.from_user.id
-            months = ""
-            
-            # Определяем текст для описания
-            if months == 1:
-                month = "месяц"
-            elif months == 3:
-                month = "3 месяца"
-            elif months == 6:
-                month = "6 месяцев"
-            elif months == 12:
-                month = "1 год"
-            else:
-                month = f"{months} месяцев"
-            
-            # Очищаем состояние ПЕРЕД отправкой инвойса
-            await state.clear()
-            
-            # Создаем payload - ВАЖНО: создаем строку Python словаря
-            # Именно такой формат работает в вашем примере
-            payload = {"user_id": user_id, "months": months}
-            
-            # Преобразуем в строку Python словаря (не JSON!)
-            payload_str = str(payload)
-            logger.info(f"Stars payload string: {payload_str}")
-            logger.info(f"Stars payload type: {type(payload_str)}")
-            
-            # Определяем стоимость в Stars (258 Stars ≈ $2.58 ≈ 250 руб)
-            stars_per_month = 1
-            stars_count = stars_per_month * months
-            
-            # Удаляем предыдущее сообщение с выбором оплаты
+            await state.clear()  # очищаем состояние
+
+            # 🔥 ФИКС: ЖЁСТКО 99 Stars, 1 месяц, plan_id=0
+            stars_count = 99
+            months = 1
+            action = data.get('action', 'new')
+            key_id = data.get('key_id', 0)
+            host_name = "all_servers"
+            plan_id = 0
+            customer_email = data.get('customer_email')
+
+            # Генерируем короткий уникальный ID: s_ + 8 hex
+            payment_id = f"s_{uuid.uuid4().hex[:8]}"
+
+            # Сохраняем данные во временное хранилище
+            _pending_stars_payments[payment_id] = {
+                "user_id": user_id,
+                "months": months,
+                "price": 99.0,
+                "action": action,
+                "key_id": key_id,
+                "host_name": host_name,
+                "plan_id": plan_id,
+                "customer_email": customer_email,
+                "payment_method": "Telegram Stars",
+                "created_at": datetime.utcnow()
+            }
+
+            # Очистка старых записей (>10 мин)
+            now = datetime.utcnow()
+            expired = [
+                pid for pid, meta in _pending_stars_payments.items()
+                if now - meta["created_at"] > timedelta(minutes=10)
+            ]
+            for pid in expired:
+                del _pending_stars_payments[pid]
+
+            # Удаляем сообщение выбора оплаты
             try:
                 await callback.message.delete()
+            except Exception as e:
+                logger.debug(f"Failed to delete message: {e}")
+
+            # Отправляем инвойс — payload ТОЛЬКО КОРОТКИЙ ID!
+            await callback.message.answer_invoice(
+                title="Подписка на 1 месяц",
+                description="Фиксированная подписка: 99 Stars",
+                currency="XTR",
+                prices=get_stars_payment(stars_count, "1 месяц"),  # stars_count = 99 (int!)
+                payload=payment_id,  # ← строка вроде "s_a1b2c3d4"
+                provider_token=""
+            )
+            logger.info(f"Stars invoice sent. ID: {payment_id}, user: {user_id}")
+
+        except Exception as e:
+            logger.error(f"Stars error for user {user_id}: {e}", exc_info=True)
+            try:
+                await callback.message.answer(
+                    "❌ Не удалось создать счёт через Stars.\n"
+                    "Попробуйте выбрать другой способ оплаты."
+                )
             except:
                 pass
-            
-            # Отправляем инвойс
-            result = await callback.message.answer_invoice(
-                title=f"Подписка на {month}",
-                description="Пожалуйста, оплатите счет по кнопке ниже.",
-                currency="XTR",
-                prices=get_stars_payment(stars_count, month),
-                payload=payload_str,
-                provider_token="",  # Для Stars обязательно пустая строка
-            )
-            
-            logger.info(f"Invoice sent successfully. Message ID: {result.message_id}")
-            
-        except Exception as e:
-            logger.error(f"Error creating Telegram Stars invoice for user {callback.from_user.id}: {e}", exc_info=True)
-            await callback.message.answer("❌ Не удалось создать счет для оплаты через Stars. Попробуйте другой способ оплаты.")
-            await state.clear()
-
     @user_router.pre_checkout_query()
     async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
         """Обработчик предварительной проверки платежа"""
