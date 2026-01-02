@@ -673,7 +673,7 @@ def get_user_router() -> Router:
             await callback.answer()
             await callback.message.edit_text(
                 "Выберите сервер, на котором хотите получить пробный ключ:",
-                reply_markup=keyboards.create_host_selection_keyboard(hosts, action="trial")
+                reply_markup=keyboards.create_host_selection_keyboard_trial(hosts, action="trial")
             )
 
     @user_router.callback_query(F.data.startswith("select_host_trial_"))

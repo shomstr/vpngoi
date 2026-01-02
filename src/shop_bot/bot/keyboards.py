@@ -84,6 +84,16 @@ def create_host_selection_keyboard(hosts: list, action: str) -> InlineKeyboardMa
     builder.adjust(1)
     return builder.as_markup()
 
+def create_host_selection_keyboard_trial(hosts: list, action: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for host in hosts:
+        callback_data = f"select_host_{action}_{host['host_name']}"
+        builder.button(text=host['host_name'], callback_data='d')
+    builder.button(text="🌐 Подписка на все серверы", callback_data="get_full_subscription")
+    builder.button(text="⬅️ Назад", callback_data="manage_keys" if action == 'new' else "back_to_main_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
 def create_plans_keyboard(plans: list[dict], action: str, host_name: str, key_id: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
