@@ -214,7 +214,7 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(F.data == "get_full_subscription")
     @registration_required
-    async def get_full_subscription_handler(callback: types.CallbackQuery):
+    async def j(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         await callback.answer("Генерируем ссылку на подписку...", show_alert=True)
 
@@ -244,7 +244,7 @@ def get_user_router() -> Router:
             )
     @user_router.callback_query(F.data == "get_unified_subscription")
     @registration_required
-    async def get_full_subscription_handler(callback: types.CallbackQuery):
+    async def a(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         await callback.answer("Генерируем ссылку на подписку...", show_alert=True)
 
@@ -878,6 +878,26 @@ def get_user_router() -> Router:
                 key_id=key_id
             )
         )
+    @user_router.callback_query(F.data == "buy_full_subscription")
+    @registration_required
+    async def buy_full_subscription_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        # Сохраняем контекст покупки ВСЕХ серверов
+        await state.update_data(
+            action="new",
+            key_id=0,
+            host_name="all_servers",  # флаг для обработки
+            plan_id=0,                # не используется, но нужен в метаданных
+            months=1,
+            price_rub=280.0,
+            price_stars=99,
+            price_ton=2.0
+        )
+        await callback.message.edit_text(
+            "📧 Хотите указать email для чека? Если нет — продолжите без него.",
+            reply_markup=keyboards.create_skip_email_keyboard()
+        )
+        await state.set_state(PaymentProcess.waiting_for_email)
 
     @user_router.callback_query(F.data.startswith("buy_"))
     @registration_required
@@ -1018,15 +1038,18 @@ def get_user_router() -> Router:
             await state.clear()
             return
 
-        base_price = Decimal(str(plan['price']))
-        price_rub = base_price
-
-        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-            discount_percentage_str = get_setting("referral_discount") or "0"
-            discount_percentage = Decimal(discount_percentage_str)
-            if discount_percentage > 0:
-                discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                price_rub = base_price - discount_amount
+        # Если это покупка "всех серверов"
+        if data.get('host_name') == "all_servers":
+            price_rub = Decimal(str(data.get('price_rub', 280.0)))
+        else:
+            base_price = Decimal(str(plan['price']))
+            price_rub = base_price
+            if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
+                discount_percentage_str = get_setting("referral_discount") or "0"
+                discount_percentage = Decimal(discount_percentage_str)
+                if discount_percentage > 0:
+                    discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
+                    price_rub = base_price - discount_amount
 
         plan_id = data.get('plan_id')
         customer_email = data.get('customer_email')
