@@ -1488,8 +1488,8 @@ def get_user_router() -> Router:
             await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE")
 
             await message.answer(
-                "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
-                f"<code>{sub_url}</code>\n\n"
+                "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
+                f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
                 "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
