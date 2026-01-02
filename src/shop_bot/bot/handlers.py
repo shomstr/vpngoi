@@ -820,12 +820,22 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(F.data == "buy_new_key")
     @registration_required
-    async def buy_new_key_handler(callback: types.CallbackQuery):
+    async def buy_new_key_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer()
         hosts = get_all_hosts()
         if not hosts:
             await callback.message.edit_text("❌ В данный момент нет доступных серверов для покупки.")
             return
+        await state.update_data(
+        action="new",
+        key_id=0,
+        host_name="all_servers",
+        months=1,
+        price_rub=99.0,
+        price_usd=3.0,
+        price_ton=2.0,
+        price_stars=99
+    )
         
         await callback.message.edit_text(
             "<b>‼️Ниже приведен список серверов</b>, которые войдут в вашу персональную кофнигурацию ключа.\n\n<blockquote><i>После просмотра, оформите подписку на все серверы</i></blockquote>",
@@ -1033,53 +1043,15 @@ def get_user_router() -> Router:
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_yookassa")
     async def create_yookassa_payment_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю ссылку на оплату...")
-        
         data = await state.get_data()
-        user_data = get_user(callback.from_user.id)
-        
-        plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
-
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        # Если это покупка "всех серверов"
-        if data.get('host_name') == "all_servers":
-            price_rub = Decimal(str(data.get('price_rub', 280.0)))
-        else:
-            base_price = Decimal(str(plan['price']))
-            price_rub = base_price
-            if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-                discount_percentage_str = get_setting("referral_discount") or "0"
-                discount_percentage = Decimal(discount_percentage_str)
-                if discount_percentage > 0:
-                    discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                    price_rub = base_price - discount_amount
-
-        plan_id = data.get('plan_id')
-        customer_email = data.get('customer_email')
-        host_name = data.get('host_name')
-        action = data.get('action')
-        key_id = data.get('key_id')
-        
-        if not customer_email:
-            customer_email = get_setting("receipt_email")
-
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        months = plan['months']
         user_id = callback.from_user.id
+        customer_email = data.get('customer_email') or get_setting("receipt_email")
+
+        price_rub = Decimal("99.00")
+        months = 1
 
         try:
             price_str_for_api = f"{price_rub:.2f}"
-            price_float_for_metadata = float(price_rub)
-
             receipt = None
             if customer_email and is_valid_email(customer_email):
                 receipt = {
@@ -1091,15 +1063,21 @@ def get_user_router() -> Router:
                         "vat_code": "1"
                     }]
                 }
+
             payment_payload = {
                 "amount": {"value": price_str_for_api, "currency": "RUB"},
                 "confirmation": {"type": "redirect", "return_url": f"https://t.me/{TELEGRAM_BOT_USERNAME}"},
                 "capture": True,
                 "description": f"Подписка на {months} мес.",
                 "metadata": {
-                    "user_id": user_id, "months": months, "price": price_float_for_metadata, 
-                    "action": action, "key_id": key_id, "host_name": host_name,
-                    "plan_id": plan_id, "customer_email": customer_email,
+                    "user_id": user_id,
+                    "months": months,
+                    "price": float(price_rub),
+                    "action": "new",
+                    "key_id": 0,
+                    "host_name": "all_servers",
+                    "plan_id": 0,  # не используется
+                    "customer_email": customer_email,
                     "payment_method": "YooKassa"
                 }
             }
@@ -1107,16 +1085,14 @@ def get_user_router() -> Router:
                 payment_payload['receipt'] = receipt
 
             payment = Payment.create(payment_payload, uuid.uuid4())
-            
             await state.clear()
-            
             await callback.message.edit_text(
                 "Нажмите на кнопку ниже для оплаты:",
                 reply_markup=keyboards.create_payment_keyboard(payment.confirmation.confirmation_url)
             )
         except Exception as e:
-            logger.error(f"Failed to create YooKassa payment: {e}", exc_info=True)
-            await callback.message.answer("Не удалось создать ссылку на оплату.")
+            logger.error(f"YooKassa error: {e}", exc_info=True)
+            await callback.message.answer("❌ Не удалось создать ссылку.")
             await state.clear()
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
@@ -1186,10 +1162,9 @@ def get_user_router() -> Router:
             payload_data = f"{user_id}:{months}:{float(price_rub)}:{action}:{key_id}:{host_name}:{plan_id}:{customer_email}:CryptoBot"
 
             invoice = await crypto.create_invoice(
-                currency_type="fiat",
                 fiat="RUB",
-                amount=float(price_rub),
-                description=f"Подписка на {months} мес.",
+                amount=99.0,
+                description="Подписка на 1 месяц",
                 payload=payload_data,
                 expires_in=3600
             )
@@ -1284,8 +1259,8 @@ def get_user_router() -> Router:
             await state.clear()
             return
 
-        price_ton = (price_rub / usdt_rub_rate / ton_usdt_rate).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
-        amount_nanoton = int(price_ton * 1_000_000_000)
+        price_ton = Decimal("2.000")
+        amount_nanoton = int(price_ton * 1_000_000_000) 
         
         payment_id = str(uuid.uuid4())
         metadata = {
@@ -1351,6 +1326,7 @@ def get_user_router() -> Router:
             # 🔥 ЖЁСТКО ФИКСИРУЕМ: 99 Stars, 1 месяц, plan_id=0, host_name="all_servers"
             stars_count = 99
             months = 1
+            price_rub = 99.0
             action = data.get('action', 'new')
             key_id = data.get('key_id', 0)
             host_name = "all_servers"
@@ -1473,7 +1449,7 @@ def get_user_router() -> Router:
             metadata.setdefault("action", "new")
             metadata.setdefault("key_id", 0)
             metadata.setdefault("host_name", "all_servers")
-            metadata.setdefault("plan_id", 1)
+            metadata.setdefault("plan_id", 0)
             metadata.setdefault("customer_email", "")
             metadata.setdefault("payment_method", "Telegram Stars")
             metadata["chat_id"] = message.chat.id
@@ -1732,30 +1708,27 @@ async def get_ton_usdt_rate() -> Decimal | None:
     except Exception as e:
         logger.error(f"Error getting TON USDT Binance rate: {e}", exc_info=True)
         return None
+
 async def process_successful_payment(bot: Bot, metadata: dict):
     logger.info(f"=== START process_successful_payment ===")
     logger.info(f"Metadata: {json.dumps(metadata, indent=2)}")
-    
+
     try:
         user_id = int(metadata['user_id'])
-        months = int(metadata['months'])
-        price = float(metadata['price'])
-        action = metadata['action']
-        key_id = int(metadata['key_id'])
-        host_name = metadata['host_name']
-        plan_id = int(metadata['plan_id'])
-        customer_email = metadata.get('customer_email')
-        payment_method = metadata.get('payment_method')
+        months = 1  # ← фиксировано 1 месяц
+        price = float(metadata.get('price', 99.0))  # ← по умолчанию 99
+        action = metadata.get('action', 'new')
+        payment_method = metadata.get('payment_method', 'Unknown')
 
+        # Не используем: key_id, plan_id, host_name — игнорируем полностью
         chat_id_to_delete = metadata.get('chat_id')
         message_id_to_delete = metadata.get('message_id')
-        
-        logger.info(f"Parsed data: user_id={user_id}, months={months}, action={action}, host_name={host_name}")
-        
+
     except (ValueError, TypeError, KeyError) as e:
         logger.error(f"FATAL: Could not parse metadata. Error: {e}. Metadata: {metadata}")
         return
 
+    # Удаляем сообщение с инвойсом/платёжной кнопкой
     if chat_id_to_delete and message_id_to_delete:
         try:
             await bot.delete_message(chat_id=chat_id_to_delete, message_id=message_id_to_delete)
@@ -1764,123 +1737,109 @@ async def process_successful_payment(bot: Bot, metadata: dict):
 
     processing_message = await bot.send_message(
         chat_id=user_id,
-        text=f"✅ Оплата получена! Обрабатываю ваш запрос на сервере \"{host_name}\"..."
+        text="✅ Оплата получена! Создаю вашу подписку и ключ..."
     )
-    
+
     try:
-        # УДАЛЯЕМ старый код работы с XUI API и заменяем на подписку
-        
-        # 1. Создаем подписку
+        # === 1. Создаём подписку (как раньше) ===
         sub_uuid = create_subscription_link(user_id)
-        YOUR_DOMAIN = "213.176.74.138:1488"  # Используйте ваш домен
-        
-        # 2. В зависимости от action создаем разный текст
-        if action == "new":
-            action_text = "приобретен"
-        elif action == "extend":
-            action_text = "продлен"
-        else:
-            action_text = "обработан"
-        
-        # 3. Обновляем статистику пользователя
+        YOUR_DOMAIN = "213.176.74.138:1488"  # ← ЗАМЕНИТЕ НА ВАШ ДОМЕН
+        sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+
+        # === 2. Добавляем ключ в БД (фиктивные данные, без XUI) ===
+        now = datetime.utcnow()
+        expiry_date = now + timedelta(days=30 * months)  # 30 дней на 1 месяц
+        key_number = get_next_key_number(user_id)
+
+        fake_uuid = str(uuid.uuid4())
+        key_email = f"user{user_id}-key{key_number}@bot.sub"
+
+        new_key_id = add_new_key(
+            user_id=user_id,
+            host_name="all_servers",
+            xui_client_uuid=fake_uuid,  # ← фиктивный UUID
+            key_email=key_email,
+            expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
+        )
+        logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
+
+        # === 3. Обновляем статистику ===
         update_user_stats(user_id, price, months)
-        logger.info(f"User stats updated: user_id={user_id}, price={price}, months={months}")
-        
-        # 4. Реферальная система (если есть)
+        logger.info(f"📊 Updated stats: user={user_id}, spent={price}, months={months}")
+
+        # === 4. Реферальный бонус (если применимо) ===
         user_data = get_user(user_id)
         referrer_id = user_data.get('referred_by')
-
         if referrer_id:
-            percentage = Decimal(get_setting("referral_percentage") or "0")
+            percentage = Decimal(get_setting("referral_percentage") or "10")  # например, 10%
             reward = (Decimal(str(price)) * percentage / 100).quantize(Decimal("0.01"))
-            
             if float(reward) > 0:
                 add_to_referral_balance(referrer_id, float(reward))
-                logger.info(f"Referral reward added: {reward:.2f} RUB to user {referrer_id}")
-                
+                logger.info(f"💰 Referral reward {reward} RUB → user {referrer_id}")
                 try:
                     referrer_username = user_data.get('username', 'пользователь')
                     await bot.send_message(
                         referrer_id,
-                        f"🎉 Ваш реферал @{referrer_username} совершил покупку на сумму {price:.2f} RUB!\n"
-                        f"💰 На ваш баланс начислено вознаграждение: {reward:.2f} RUB."
+                        f"🎉 Ваш реферал @{referrer_username} совершил покупку на {price:.2f} RUB!\n"
+                        f"💰 Вам начислено: {reward:.2f} RUB."
                     )
                 except Exception as e:
-                    logger.warning(f"Could not send referral reward notification to {referrer_id}: {e}")
+                    logger.warning(f"Failed to notify referrer {referrer_id}: {e}")
 
-        # 5. Логируем транзакцию
-        user_info = get_user(user_id)
+        # === 5. Лог транзакции ===
         internal_payment_id = str(uuid.uuid4())
-        
-        log_username = user_info.get('username', 'N/A') if user_info else 'N/A'
-        log_status = 'paid'
-        log_amount_rub = float(price)
-        log_method = metadata.get('payment_method', 'Unknown')
-        
-        log_metadata = json.dumps({
-            "plan_id": metadata.get('plan_id'),
-            "plan_name": get_plan_by_id(metadata.get('plan_id')).get('plan_name', 'Unknown') if get_plan_by_id(metadata.get('plan_id')) else 'Unknown',
-            "host_name": metadata.get('host_name'),
-            "customer_email": metadata.get('customer_email'),
-            "sub_uuid": sub_uuid,
-            "action": action
-        })
-
         log_transaction(
-            username=log_username,
+            username=user_data.get('username', 'N/A'),
             transaction_id=None,
             payment_id=internal_payment_id,
             user_id=user_id,
-            status=log_status,
-            amount_rub=log_amount_rub,
+            status='paid',
+            amount_rub=price,
             amount_currency=None,
             currency_name=None,
-            payment_method=log_method,
-            metadata=log_metadata
+            payment_method=payment_method,
+            metadata=json.dumps({
+                "action": action,
+                "months": months,
+                "price": price,
+                "payment_method": payment_method,
+                "sub_uuid": sub_uuid,
+                "key_id": new_key_id,
+            })
         )
-        logger.info(f"Transaction logged: payment_id={internal_payment_id}")
-        
-        # 6. Удаляем сообщение о обработке
+
+        # === 6. Отправляем финальное сообщение ===
         await processing_message.delete()
-        
-        # 7. Формируем URL подписки
-        sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
-        
-        # 8. Формируем текст сообщения в зависимости от action
-        if action == "new":
-            final_text = (
-                f"🎉 <b>Подписка успешно {action_text}!</b>\n\n"
-                f"📅 <b>Срок действия:</b> {months} месяцев\n"
-                f"💰 <b>Сумма:</b> {price:.2f} RUB\n\n"
-                f"✅ <b>Ваша персональная ссылка на подписку:</b>\n"
-                f"<code>{sub_url}</code>\n\n"
-                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.\n\n"
-                f"⚠️ <b>Внимание:</b> Ссылка содержит ВСЕ ваши активные ключи на всех серверах."
-            )
-        elif action == "extend":
-            final_text = (
-                f"🎉 <b>Подписка успешно {action_text}!</b>\n\n"
-                f"📅 <b>Добавлено:</b> {months} месяцев\n"
-                f"💰 <b>Сумма:</b> {price:.2f} RUB\n\n"
-                f"✅ <b>Обновленная ссылка на подписку:</b>\n"
-                f"<code>{sub_url}</code>\n\n"
-                f"📎 Используйте эту ссылку в вашем клиенте.\n\n"
-                f"⚠️ <b>Внимание:</b> Подписка автоматически обновилась и содержит все ваши активные ключи."
-            )
-        
-        # 9. Отправляем пользователю
+
+        await bot.send_sticker(
+            chat_id=user_id,
+            sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE"
+        )
+
+        success_text = (
+            "🎉 <b>ПОДПИСКА АКТИВИРОВАНА!</b>\n\n"
+            f"✅ <b>Срок:</b> 1 месяц\n"
+            f"💰 <b>Оплачено:</b> {price:.2f} {'RUB' if payment_method != 'TON Connect' and payment_method != 'Telegram Stars' and payment_method != 'CryptoBot (USD)' else ('TON' if payment_method == 'TON Connect' else ('Stars' if payment_method == 'Telegram Stars' else 'USD'))}\n\n"
+            f"🔗 <b>Ваша ссылка на подписку:</b>\n"
+            f"<code>{sub_url}</code>\n\n"
+            "📌 Откройте её в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>."
+        )
+
         await bot.send_message(
             chat_id=user_id,
-            text=final_text,
+            text=success_text,
             parse_mode="HTML",
             reply_markup=keyboards.create_back_to_menu_keyboard()
         )
 
-        # 10. Уведомляем администратора
+        # === 7. Уведомление админа ===
         await notify_admin_of_purchase(bot, metadata)
-        logger.info("=== END process_successful_payment SUCCESS ===")
-        
+
+        logger.info("✅ process_successful_payment — SUCCESS")
+
     except Exception as e:
-        logger.error(f"Error processing payment for user {user_id}: {e}", exc_info=True)
-        await processing_message.edit_text("❌ Ошибка при обработке платежа.")
-        logger.error("=== END process_successful_payment ERROR ===")
+        logger.error(f"❌ ERROR in process_successful_payment for user {user_id}: {e}", exc_info=True)
+        try:
+            await processing_message.edit_text("❌ Ошибка при создании подписки. Обратитесь в поддержку.")
+        except:
+            pass
