@@ -1116,22 +1116,9 @@ def get_user_router() -> Router:
             await state.clear()
             return
 
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            logger.error(f"Attempt to create Crypto Pay invoice failed for user {user_id}: Plan with id {plan_id} not found.")
-            await callback.message.edit_text("❌ Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-        
-        plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
+      
 
-        if not plan:
-            await callback.message.answer("Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        base_price = Decimal(str(plan['price']))
+        base_price = 99
         price_rub = base_price
 
         if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
@@ -1140,7 +1127,7 @@ def get_user_router() -> Router:
             if discount_percentage > 0:
                 discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
                 price_rub = base_price - discount_amount
-        months = plan['months']
+        months =1
         
         try:
             exchange_rate = await get_usdt_rub_rate()
@@ -1220,7 +1207,7 @@ def get_user_router() -> Router:
         pay_url = await _create_heleket_payment_request(
             user_id=callback.from_user.id,
             price=final_price_float,
-            months=plan['months'],
+            months=1,
             host_name=data.get('host_name'),
             state_data=data
         )
