@@ -1485,6 +1485,8 @@ def get_user_router() -> Router:
 
             sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
+            await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE")
+
             await message.answer(
                 "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
                 f"<code>{sub_url}</code>\n\n"
