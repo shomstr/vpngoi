@@ -676,7 +676,7 @@ def get_user_router() -> Router:
         else:
             await callback.answer()
             await callback.message.edit_text(
-                "Ниже приведен список серверов, которые войдут в <b>пробную</b> конфигурацию ключа",
+                "‼️Ниже приведен список серверов, которые войдут в <b>пробную</b> конфигурацию ключа",
                 reply_markup=keyboards.create_host_selection_keyboard_trial(hosts, action="trial")
             )
 
@@ -828,7 +828,7 @@ def get_user_router() -> Router:
             return
         
         await callback.message.edit_text(
-            "Ниже приведен список серверов, которые войдут в вашу персональную кофнигурацию ключа.\n<i>После просмотра, оформите подписку на все серверы</i>",
+            "<b>‼️Ниже приведен список серверов</b>, которые войдут в вашу персональную кофнигурацию ключа.\n\n<blockquote<i>После просмотра, оформите подписку на все серверы</i></blockquote>",
             reply_markup=keyboards.create_host_selection_keyboard(hosts, action="new")
         )
 
