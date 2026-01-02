@@ -145,6 +145,8 @@ def get_user_router() -> Router:
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.full_name
         referrer_id = None
+        await message.answer(sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
+
 
         if command.args and command.args.startswith('ref_'):
             try:
@@ -193,7 +195,6 @@ def get_user_router() -> Router:
             welcome_parts.append("Также необходимо ознакомиться с нашими Условиями использования и Политикой конфиденциальности.")
 
         welcome_parts.append("\nПосле этого нажмите кнопку ниже.")
-        await message.answer(sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE")
         final_text = "\n".join(welcome_parts)
         await message.answer(
             final_text,
