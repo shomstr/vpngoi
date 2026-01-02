@@ -1330,21 +1330,7 @@ def get_user_router() -> Router:
             # Получаем данные из состояния
             data = await state.get_data()
             user_id = callback.from_user.id
-            
-            plan_id = data.get('plan_id')
-            if not plan_id:
-                await callback.message.answer("❌ Произошла ошибка: данные о тарифе не найдены.")
-                await state.clear()
-                return
-            
-            # Получаем информацию о тарифе
-            plan = get_plan_by_id(plan_id)
-            if not plan:
-                await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
-                await state.clear()
-                return
-            
-            months = plan['months']
+            months = ""
             
             # Определяем текст для описания
             if months == 1:
@@ -1363,7 +1349,7 @@ def get_user_router() -> Router:
             
             # Создаем payload - ВАЖНО: создаем строку Python словаря
             # Именно такой формат работает в вашем примере
-            payload = {"user_id": user_id, "plan_id": plan_id, "months": months}
+            payload = {"user_id": user_id, "months": months}
             
             # Преобразуем в строку Python словаря (не JSON!)
             payload_str = str(payload)
