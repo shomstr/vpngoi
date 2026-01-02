@@ -1641,12 +1641,11 @@ async def process_successful_payment(bot: Bot, metadata: dict):
     
     try:
         user_id = int(metadata['user_id'])
-        months = int(metadata['months'])
-        price = float(metadata['price'])
-        action = metadata['action']
+        months = int(metadata.get('months', 1))
+        price = float(metadata.get('price', 99.0))
+        plan_id = int(metadata.get('plan_id', 0))
+        host_name = metadata.get('host_name', 'all_servers')
         key_id = int(metadata['key_id'])
-        host_name = metadata['host_name']
-        plan_id = int(metadata['plan_id'])
         customer_email = metadata.get('customer_email')
         payment_method = metadata.get('payment_method')
 
