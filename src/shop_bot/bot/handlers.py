@@ -828,7 +828,7 @@ def get_user_router() -> Router:
             return
         
         await callback.message.edit_text(
-            "<b>‼️Ниже приведен список серверов</b>, которые войдут в вашу персональную кофнигурацию ключа.\n\n<blockquote<i>После просмотра, оформите подписку на все серверы</i></blockquote>",
+            "<b>‼️Ниже приведен список серверов</b>, которые войдут в вашу персональную кофнигурацию ключа.\n\n<blockquote><i>После просмотра, оформите подписку на все серверы</i></blockquote>",
             reply_markup=keyboards.create_host_selection_keyboard(hosts, action="new")
         )
 
