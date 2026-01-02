@@ -111,7 +111,7 @@ async def show_main_menu(message: types.Message, edit_message: bool = False):
     trial_available = not (user_db_data and user_db_data.get('trial_used'))
     is_admin = str(user_id) == ADMIN_ID
 
-    text = "🏠 Вы находитесь<b>Главном меню</b>\n<blockquote expandable>1. Мой профиль - баланс, статус подписки\n2. Реферальная программа - пригласи друга для более выгодных покупок!\n3. Мои ключи - список ваших ключей\n4. Поддержка - обращение в поддержку\n5. О проекте - информация о проекте\nКак использовать? - инструкция по использованию</blockquote>"
+    text = "🏠 Вы находитесь в <b>Главном меню</b>\n\n<blockquote expandable>1. Мой профиль - баланс, статус подписки\n2. Реферальная программа - пригласи друга для более выгодных покупок!\n3. Мои ключи - список ваших ключей\n4. Поддержка - обращение в поддержку\n5. О проекте - информация о проекте\nКак использовать? - инструкция по использованию</blockquote>"
     keyboard = keyboards.create_main_menu_keyboard(user_keys, trial_available, is_admin)
     
     if edit_message:
@@ -218,6 +218,10 @@ def get_user_router() -> Router:
         await callback.answer("Генерируем ссылку на подписку...", show_alert=True)
 
         try:
+            await callback.bot.send_sticker(
+            chat_id=callback.message.chat.id,
+            sticker="CAACAgIAAxkBAAEQKFFpWCvdP8ApGVhO0kzwYJJQjrBHkgAC0JYAAtckwUp3QP5GEx6Y7DgE"
+        )
             # Генерируем или получаем UUID подписки
             sub_uuid = create_subscription_link(user_id)
 
@@ -227,7 +231,7 @@ def get_user_router() -> Router:
             sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
             await callback.message.answer(
-                "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
+                "✅ <b>Ваша пробная ссылка на подписку:</b>\n\n"
                 f"<code>{sub_url}</code>\n\n"
                 "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
