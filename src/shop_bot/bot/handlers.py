@@ -53,17 +53,9 @@ from shop_bot.config import (
     get_profile_text, get_vpn_active_text, VPN_INACTIVE_TEXT, VPN_NO_DATA_TEXT,
     get_key_info_text, CHOOSE_PAYMENT_METHOD_MESSAGE, get_purchase_success_text
 )
-crypto = None
-
-def init_crypto_if_needed():
-    global crypto
-    if crypto is None:
-        token = get_setting('cryptobot_token')
-        if token:
-            from aiosend import CryptoPay
-            crypto = CryptoPay(token)
-        else:
-            crypto = None
+cryptobot_token = get_setting('cryptobot_token')
+crypto = CryptoPay(cryptobot_token)
+crypto.start_polling()
 @crypto.invoice_paid()
 async def handle_payment(
         invoice: Invoice,
@@ -121,42 +113,7 @@ _pending_stars_payments = {}
 def is_valid_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return re.match(pattern, email) is not None
-# В конце файла handlers.py, после всех импортов, но до `return user_router`:
-def setup_crypto_handler(bot: Bot):
-    global crypto
-    
-    async def handle_crypto_payment(invoice: Invoice):
-        logger.info(f"✅ CryptoBot payment: {invoice.amount} {invoice.asset}, ID: {invoice.invoice_id}")
-        try:
-            # Извлекаем user_id из payload
-            if invoice.payload and invoice.payload.startswith("user_"):
-                user_id = int(invoice.payload.split("_")[1])
-            else:
-                logger.warning("No user_id in invoice payload")
-                return
 
-            # Готовим метаданные как в Stars
-            metadata = {
-                "user_id": user_id,
-                "months": 1,
-                "price": float(invoice.amount),
-                "action": "new",
-                "key_id": 0,
-                "host_name": "all_servers",
-                "plan_id": 0,
-                "customer_email": "",
-                "payment_method": "CryptoBot (USD)",
-                "chat_id": user_id
-            }
-
-            from shop_bot.bot.handlers import process_successful_payment
-            await process_successful_payment(bot, metadata)
-
-        except Exception as e:
-            logger.error(f"Error in crypto payment handler: {e}", exc_info=True)
-
-    if crypto:
-        crypto.on_invoice_paid(handle_crypto_payment)
 async def show_main_menu(message: types.Message, edit_message: bool = False):
     user_id = message.chat.id
     user_db_data = get_user(user_id)
