@@ -1097,78 +1097,86 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
     async def create_cryptobot_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
-        await callback.answer("Создаю счет в Crypto Pay...")
+        await callback.answer("Создаю счёт в CryptoBot...")
         
+        user_id = callback.from_user.id
         data = await state.get_data()
-        user_data = get_user(callback.from_user.id)
+        user_data = get_user(user_id)
         
-        plan_id = data.get('plan_id')
-        user_id = callback.from_user.id  # ← исправлено
+        # ✅ Фиксированные значения — без plan_id, host_name, key_id
+        months = 1
+        base_price_rub = Decimal("1.00")
         customer_email = data.get('customer_email') or ""
-        host_name = data.get('host_name')
-        action = data.get('action')
-        key_id = data.get('key_id')
+
+        # Применяем реферальный дисконт (если первый платёж)
+        price_rub = base_price_rub
+        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
+            discount_percentage_str = get_setting("referral_discount") or "0"
+            try:
+                discount_percentage = Decimal(discount_percentage_str)
+                if discount_percentage > 0:
+                    discount_amount = (base_price_rub * discount_percentage / 100).quantize(Decimal("0.01"))
+                    price_rub = base_price_rub - discount_amount
+            except Exception as e:
+                logger.warning(f"Referral discount parse error: {e}")
 
         cryptobot_token = get_setting('cryptobot_token')
         if not cryptobot_token:
-            logger.error(f"Attempt to create Crypto Pay invoice failed for user {user_id}: cryptobot_token is not set.")
-            await callback.message.edit_text("❌ Оплата криптовалютой временно недоступна. (Администратор не указал токен).")
+            logger.error(f"CryptoBot token missing for user {user_id}")
+            await callback.message.edit_text("❌ Криптооплата временно недоступна (токен не настроен).")
             await state.clear()
             return
 
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            logger.error(f"Attempt to create Crypto Pay invoice failed for user {user_id}: Plan with id {plan_id} not found.")
-            await callback.message.edit_text("❌ Произошла ошибка при выборе тарифа.")
-            await state.clear()
-            return
-
-        base_price = Decimal(str(plan['price']))
-        price_rub = base_price
-
-        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-            discount_percentage_str = get_setting("referral_discount") or "0"
-            discount_percentage = Decimal(discount_percentage_str)
-            if discount_percentage > 0:
-                discount_amount = (base_price * discount_percentage / 100).quantize(Decimal("0.01"))
-                price_rub = base_price - discount_amount
-        
-        months = plan['months']
-        
         try:
+            # Создаём инвойс в RUB — указываем currency_type="fiat"!
             crypto = CryptoPay(cryptobot_token)
-            
-            # Формируем payload в формате строки (разделитель :)
-            payload_data = f"{user_id}:{months}:{float(price_rub)}:{action}:{key_id}:{host_name}:{plan_id}:{customer_email}:CryptoBot"
-            
-            logger.info(f"Creating CryptoBot invoice with payload: {payload_data}")
-            
+
+            # 🟢 ВАЖНО: передаём currency_type="fiat", тогда asset НЕ нужен
+            # payload — передаём метаданные для process_successful_payment
+            payload_data = {
+                "user_id": user_id,
+                "months": months,
+                "price": float(price_rub),
+                "action": "new",
+                "key_id": 0,
+                "host_name": "all_servers",
+                "plan_id": 0,
+                "customer_email": customer_email,
+                "payment_method": "CryptoBot"
+            }
+
+            # Кодируем payload в строку (например, JSON, без спецсимволов)
+            payload_str = json.dumps(payload_data, separators=(',', ':'))
+
             invoice = await crypto.create_invoice(
-                currency_type="fiat",
                 fiat="RUB",
-                amount=float(price_rub),
-                description=payload_data,  # ← передаем payload как описание
-                payload=payload_data,      # ← и как payload тоже
+                amount=float(price_rub),      # ← 99.0 или со скидкой
+                description=f"Подписка на {months} мес.",
+                payload=payload_str,
+                currency_type="fiat",         # 🔑 ОБЯЗАТЕЛЬНО: fiat → не требует asset
                 expires_in=3600
             )
-            
-            if not invoice or not invoice.pay_url:
-                raise Exception("Failed to create invoice or pay_url is missing.")
 
-            # Сохраняем chat_id и message_id для удаления позже
-            await state.update_data(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id
-            )
-            
+            if not invoice or not invoice.pay_url:
+                raise Exception("Invoice creation returned empty pay_url")
+
+            logger.info(f"✅ CryptoBot invoice created for user {user_id}: {price_rub} RUB")
+
             await callback.message.edit_text(
+                f"💳 Счёт на {price_rub:.2f} RUB создан.\n\n"
                 "Нажмите на кнопку ниже для оплаты:",
                 reply_markup=keyboards.create_payment_keyboard(invoice.pay_url)
             )
-            
+            await state.clear()
+
         except Exception as e:
-            logger.error(f"Failed to create Crypto Pay invoice for user {user_id}: {e}", exc_info=True)
-            await callback.message.edit_text(f"❌ Не удалось создать счет для оплаты криптовалютой.\n\n<pre>Ошибка: {e}</pre>")
+            logger.error(f"❌ CryptoBot invoice failed for {user_id}: {e}", exc_info=True)
+            await callback.message.edit_text(
+                "❌ Не удалось создать счёт.\n\n"
+                "▫️ Проверьте, включён ли приём RUB в настройках CryptoBot App.\n"
+                "▫️ Убедитесь, что у приложения есть баланс для конвертации.",
+                reply_markup=keyboards.create_back_to_menu_keyboard()
+            )
             await state.clear()
         
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
@@ -1479,70 +1487,7 @@ def get_user_router() -> Router:
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
             await message.answer("❌ Ошибка при обработке платежа. Обратитесь в поддержку.")
-
-    @user_router.message()
-    async def handle_cryptobot_webhook(message: Message):
-        """Обработчик вебхуков от CryptoBot"""
-        try:
-            logger.info(f"Received message: {message.text}")
-            
-            # Проверяем, есть ли web_app_data (CryptoBot отправляет через web_app_data)
-            if message.web_app_data:
-                data = json.loads(message.web_app_data.data)
-                logger.info(f"Web app data received: {data}")
-                
-                if data.get('update_type') == 'invoice_paid':
-                    logger.info(f"CryptoBot invoice paid: {data}")
-                    
-                    # Парсим payload из описания инвойса
-                    invoice_data = data.get('invoice', {})
-                    payload_str = invoice_data.get('description')
-                    
-                    if payload_str:
-                        try:
-                            # Парсим метаданные из payload
-                            # Формат: "user_id:months:price:action:key_id:host_name:plan_id:customer_email:CryptoBot"
-                            parts = payload_str.split(':')
-                            
-                            if len(parts) >= 9:
-                                metadata = {
-                                    "user_id": int(parts[0]),
-                                    "months": int(parts[1]),
-                                    "price": float(parts[2]),
-                                    "action": parts[3],
-                                    "key_id": int(parts[4]),
-                                    "host_name": parts[5],
-                                    "plan_id": int(parts[6]),
-                                    "customer_email": parts[7] if parts[7] != 'None' else "",
-                                    "payment_method": parts[8] if len(parts) > 8 else "CryptoBot",
-                                    "chat_id": message.chat.id,
-                                    "message_id": message.message_id
-                                }
-                                
-                                logger.info(f"Parsed metadata from CryptoBot: {metadata}")
-                                
-                                # Вызываем обработку платежа
-                                await process_successful_payment(message.bot, metadata)
-                                await message.answer("✅ Платеж успешно обработан! Ваш ключ создан.")
-                                
-                        except Exception as e:
-                            logger.error(f"Error parsing CryptoBot payload: {e}")
-                            await message.answer("❌ Ошибка при обработке платежа. Обратитесь в поддержку.")
-                    
-            # Альтернативный вариант: проверка текста сообщения
-            elif message.text and ("invoice_paid" in message.text or "CryptoBot" in message.text):
-                try:
-                    data = json.loads(message.text)
-                    if data.get('update_type') == 'invoice_paid':
-                        logger.info(f"CryptoBot webhook received via text: {data}")
-                        
-                        # Здесь парсинг данных как выше...
-                        
-                except json.JSONDecodeError:
-                    pass
-                    
-        except Exception as e:
-            logger.error(f"Error in CryptoBot webhook handler: {e}", exc_info=True)
+    
     # Добавьте этот обработчик для отладки всех successful_payment
     @user_router.message(F.successful_payment)
     async def debug_all_payments(message: Message, bot: Bot):
