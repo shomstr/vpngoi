@@ -301,51 +301,102 @@ def create_webhook_app(bot_controller_instance):
         except Exception as e:
             logger.error(f"Error in yookassa webhook handler: {e}", exc_info=True)
             return 'Error', 500
-        
+            
     @flask_app.route('/cryptobot-webhook', methods=['POST'])
     def cryptobot_webhook_handler():
         try:
             request_data = request.json
-            
-            if request_data and request_data.get('update_type') == 'invoice_paid':
-                payload_data = request_data.get('payload', {})
-                
-                payload_string = payload_data.get('payload')
-                
-                if not payload_string:
-                    logger.warning("CryptoBot Webhook: Received paid invoice but payload was empty.")
-                    return 'OK', 200
+            if not request_data:
+                logger.warning("CryptoBot Webhook: Empty request body")
+                return 'OK', 200
 
-                parts = payload_string.split(':')
-                if len(parts) < 9:
-                    logger.error(f"cryptobot Webhook: Invalid payload format received: {payload_string}")
+            # 🔍 Поддержка НОВОГО формата (event + invoice.status)
+            if request_data.get("event") == "invoice_paid":
+                invoice = request_data.get("payload", {}).get("invoice", {})
+                status = invoice.get("status")
+                payload_string = invoice.get("payload")
+                logger.info(f"🆕 New-format webhook: status={status}, payload={payload_string[:50]}...")
+
+            # 🔍 Поддержка СТАРОГО формата (update_type)
+            elif request_data.get("update_type") == "invoice_paid":
+                payload_data = request_data.get("payload", {})
+                status = payload_data.get("status")
+                payload_string = payload_data.get("payload")
+                logger.info(f"🔄 Old-format webhook: status={status}, payload={payload_string[:50]}...")
+
+            else:
+                logger.info(f"⏭️ Ignored CryptoBot event: {request_data.get('event') or request_data.get('update_type')}")
+                return 'OK', 200
+
+            # ✅ Обрабатываем ТОЛЬКО оплаченные инвойсы
+            if status != "paid":
+                logger.info(f"🔕 Invoice status is '{status}', skipping")
+                return 'OK', 200
+
+            if not payload_string:
+                logger.warning("⚠️ CryptoBot Webhook: payload is empty")
+                return 'OK', 200
+
+            # 🧩 Парсим payload (поддерживаем оба формата: JSON и : -разделённый)
+            metadata = None
+            try:
+                # Попытка 1: JSON
+                metadata = json.loads(payload_string)
+                logger.info("✅ Parsed payload as JSON")
+            except (json.JSONDecodeError, TypeError):
+                # Попытка 2: старый формат с :
+                try:
+                    parts = payload_string.split(":")
+                    if len(parts) >= 9:
+                        metadata = {
+                            "user_id": parts[0],
+                            "months": parts[1],
+                            "price": parts[2],
+                            "action": parts[3],
+                            "key_id": parts[4],
+                            "host_name": parts[5],
+                            "plan_id": parts[6],
+                            "customer_email": parts[7] if parts[7] != "None" else None,
+                            "payment_method": parts[8]
+                        }
+                        logger.info("✅ Parsed payload as old ':' format")
+                    else:
+                        logger.error(f"❌ Invalid payload format (too few parts): {payload_string}")
+                        return 'Error', 400
+                except Exception as e2:
+                    logger.error(f"💥 Failed to parse payload '{payload_string}': {e2}")
                     return 'Error', 400
 
-                metadata = {
-                    "user_id": parts[0],
-                    "months": parts[1],
-                    "price": parts[2],
-                    "action": parts[3],
-                    "key_id": parts[4],
-                    "host_name": parts[5],
-                    "plan_id": parts[6],
-                    "customer_email": parts[7] if parts[7] != 'None' else None,
-                    "payment_method": parts[8]
-                }
-                
-                bot = _bot_controller.get_bot_instance()
-                loop = current_app.config.get('EVENT_LOOP')
-                payment_processor = handlers.process_successful_payment
+            if not metadata:
+                logger.error("🛑 No metadata extracted")
+                return 'Error', 400
 
-                if bot and loop and loop.is_running():
-                    asyncio.run_coroutine_threadsafe(payment_processor(bot, metadata), loop)
-                else:
-                    logger.error("cryptobot Webhook: Could not process payment because bot or event loop is not running.")
+            # 🔢 Приведение типов — ОБЯЗАТЕЛЬНО!
+            try:
+                metadata["user_id"] = int(metadata["user_id"])
+                metadata["months"] = int(metadata.get("months", 1))
+                metadata["price"] = float(metadata.get("price", 0))
+                metadata["key_id"] = int(metadata.get("key_id", 0))
+                metadata["plan_id"] = int(metadata.get("plan_id", 0))
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error(f"🔢 Metadata type conversion failed: {e}, raw: {metadata}")
+                return 'Error', 400
+
+            # 🚀 Запуск обработки
+            bot = _bot_controller.get_bot_instance()
+            loop = current_app.config.get("EVENT_LOOP")
+            payment_processor = handlers.process_successful_payment
+
+            if bot and loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(payment_processor(bot, metadata), loop)
+                logger.info("🚀 Launched process_successful_payment via webhook")
+            else:
+                logger.error("❌ Bot or event loop not ready — cannot process payment")
 
             return 'OK', 200
-            
+
         except Exception as e:
-            logger.error(f"Error in cryptobot webhook handler: {e}", exc_info=True)
+            logger.error(f"🔥 CRITICAL ERROR in CryptoBot webhook: {e}", exc_info=True)
             return 'Error', 500
         
     @flask_app.route('/heleket-webhook', methods=['POST'])
