@@ -1098,27 +1098,10 @@ def get_user_router() -> Router:
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
     async def create_cryptobot_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счёт в CryptoBot...")
-        
+
         user_id = callback.from_user.id
         data = await state.get_data()
-        user_data = get_user(user_id)
-        
-        # ✅ Фиксированные значения — без plan_id, host_name, key_id
-        months = 1
-        base_price_rub = Decimal("1.00")
         customer_email = data.get('customer_email') or ""
-
-        # Применяем реферальный дисконт (если первый платёж)
-        price_rub = base_price_rub
-        if user_data.get('referred_by') and user_data.get('total_spent', 0) == 0:
-            discount_percentage_str = get_setting("referral_discount") or "0"
-            try:
-                discount_percentage = Decimal(discount_percentage_str)
-                if discount_percentage > 0:
-                    discount_amount = (base_price_rub * discount_percentage / 100).quantize(Decimal("0.01"))
-                    price_rub = base_price_rub - discount_amount
-            except Exception as e:
-                logger.warning(f"Referral discount parse error: {e}")
 
         cryptobot_token = get_setting('cryptobot_token')
         if not cryptobot_token:
@@ -1128,55 +1111,54 @@ def get_user_router() -> Router:
             return
 
         try:
-            # Создаём инвойс в RUB — указываем currency_type="fiat"!
+            # 🔥 ФИКСИРУЕМ ЦЕНУ: 3 USDT — как вы и хотели
+            usdt_amount = 3.0  # ← именно 3 USDT
+            months = 1
+
             crypto = CryptoPay(cryptobot_token)
 
-            # 🟢 ВАЖНО: передаём currency_type="fiat", тогда asset НЕ нужен
-            # payload — передаём метаданные для process_successful_payment
-            payload_data = {
-                "user_id": user_id,
-                "months": months,
-                "price": float(price_rub),
-                "action": "new",
-                "key_id": 0,
-                "host_name": "all_servers",
-                "plan_id": 0,
-                "customer_email": customer_email,
-                "payment_method": "CryptoBot"
-            }
+            # ⚠️ payload передаём в СТАРОМ формате — как в рабочей версии (Pasted_Text_1767398267735.txt)
+            # Так webhook/polling точно распарсит (даже если оставите polling)
+            payload_str = ":".join([
+                str(user_id),
+                str(months),
+                "1.00",  # ← price в USDT (можно оставить, но в process_successful_payment мы фиксируем 99 RUB)
+                "new",
+                "0",  # key_id
+                "all_servers",  # host_name
+                "0",  # plan_id
+                customer_email or "None",
+                "CryptoBot"
+            ])
 
-            # Кодируем payload в строку (например, JSON, без спецсимволов)
-            payload_str = json.dumps(payload_data, separators=(',', ':'))
-
-            # Конвертируем фиксированно: 3 USD → 3 USDT (CryptoBot принимает USDT как stablecoin)
-            usdt_amount = 0.1  # ← фиксированная цена в USDT
-
+            # ✅ Создаём инвойс ТОЛЬКО в USDT (без fiat / currency_type)
             invoice = await crypto.create_invoice(
-                asset="USDT",          # ← криптовалюта
-                amount=usdt_amount,    # ← сумма в USDT
-                description=f"Подписка на {months} мес. (3 USDT)",
-                payload=payload_str,   # payload остаётся JSON-строкой или старым форматом — на ваш выбор
-                expires_in=3600        # 1 час
+                asset="USDT",
+                amount=usdt_amount,
+                description=f"Подписка на {months} мес. за 3 USDT",
+                payload=payload_str,
+                expires_in=3600
             )
 
             if not invoice or not invoice.pay_url:
                 raise Exception("Invoice creation returned empty pay_url")
 
-            logger.info(f"✅ CryptoBot invoice created for user {user_id}: {price_rub} RUB")
+            logger.info(f"✅ CryptoBot invoice created for user {user_id}: {usdt_amount} USDT")
 
             await callback.message.edit_text(
-                f"💳 Счёт на {price_rub:.2f} RUB создан.\n\n"
+                f"💳 Счёт на <b>{usdt_amount} USDT</b> создан.\n\n"
                 "Нажмите на кнопку ниже для оплаты:",
-                reply_markup=keyboards.create_payment_keyboard(invoice.pay_url)
+                reply_markup=keyboards.create_payment_keyboard(invoice.pay_url),
+                parse_mode="HTML"
             )
             await state.clear()
 
         except Exception as e:
             logger.error(f"❌ CryptoBot invoice failed for {user_id}: {e}", exc_info=True)
             await callback.message.edit_text(
-                "❌ Не удалось создать счёт.\n\n"
-                "▫️ Проверьте, включён ли приём RUB в настройках CryptoBot App.\n"
-                "▫️ Убедитесь, что у приложения есть баланс для конвертации.",
+                "❌ Не удалось создать счёт в CryptoBot.\n\n"
+                "▫️ Убедитесь, что в CryptoBot App включён приём USDT.\n"
+                "▫️ Проверьте баланс приложения в USDT.",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
             await state.clear()
