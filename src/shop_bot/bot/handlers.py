@@ -1148,13 +1148,15 @@ def get_user_router() -> Router:
             # Кодируем payload в строку (например, JSON, без спецсимволов)
             payload_str = json.dumps(payload_data, separators=(',', ':'))
 
+            # Конвертируем фиксированно: 3 USD → 3 USDT (CryptoBot принимает USDT как stablecoin)
+            usdt_amount = 3.0  # ← фиксированная цена в USDT
+
             invoice = await crypto.create_invoice(
-                fiat="RUB",
-                amount=float(price_rub),      # ← 99.0 или со скидкой
-                description=f"Подписка на {months} мес.",
-                payload=payload_str,
-                currency_type="fiat",         # 🔑 ОБЯЗАТЕЛЬНО: fiat → не требует asset
-                expires_in=3600
+                asset="USDT",          # ← криптовалюта
+                amount=usdt_amount,    # ← сумма в USDT
+                description=f"Подписка на {months} мес. (3 USDT)",
+                payload=payload_str,   # payload остаётся JSON-строкой или старым форматом — на ваш выбор
+                expires_in=3600        # 1 час
             )
 
             if not invoice or not invoice.pay_url:
