@@ -1112,7 +1112,7 @@ def get_user_router() -> Router:
 
         try:
             # 🔥 ФИКСИРУЕМ ЦЕНУ: 3 USDT — как вы и хотели
-            usdt_amount = 1.0  # ← именно 3 USDT
+            usdt_amount = 0.1  # ← именно 3 USDT
             months = 1
 
             crypto = CryptoPay(cryptobot_token)
