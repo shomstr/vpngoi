@@ -19,7 +19,8 @@ from functools import wraps
 from yookassa import Payment
 from io import BytesIO
 from datetime import datetime, timedelta
-from aiosend import CryptoPay, TESTNET
+from aiosend import CryptoPay
+from aiosend.types import Invoice
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict
 
@@ -52,8 +53,17 @@ from shop_bot.config import (
     get_profile_text, get_vpn_active_text, VPN_INACTIVE_TEXT, VPN_NO_DATA_TEXT,
     get_key_info_text, CHOOSE_PAYMENT_METHOD_MESSAGE, get_purchase_success_text
 )
+cryptobot_token = get_setting('cryptobot_token')
+crypto = CryptoPay(cryptobot_token)
 
-
+@crypto.invoice_paid()
+async def handle_payment(
+        invoice: Invoice,
+        message: Message,
+    ) -> None:
+        await message.answer(
+            f"payment received: {invoice.amount} {invoice.asset}",
+        )
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 TELEGRAM_BOT_USERNAME = None
@@ -1096,73 +1106,11 @@ def get_user_router() -> Router:
             await state.clear()
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
-    async def create_cryptobot_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
-        await callback.answer("Создаю счёт в CryptoBot...")
-
-        user_id = callback.from_user.id
-        data = await state.get_data()
-        customer_email = data.get('customer_email') or ""
-
-        cryptobot_token = get_setting('cryptobot_token')
-        if not cryptobot_token:
-            logger.error(f"CryptoBot token missing for user {user_id}")
-            await callback.message.edit_text("❌ Криптооплата временно недоступна (токен не настроен).")
-            await state.clear()
-            return
-
-        try:
-            # 🔥 ФИКСИРУЕМ ЦЕНУ: 3 USDT — как вы и хотели
-            usdt_amount = 0.1  # ← именно 3 USDT
-            months = 1
-
-            crypto = CryptoPay(cryptobot_token)
-
-            # ⚠️ payload передаём в СТАРОМ формате — как в рабочей версии (Pasted_Text_1767398267735.txt)
-            # Так webhook/polling точно распарсит (даже если оставите polling)
-            payload_str = ":".join([
-                str(user_id),
-                str(months),
-                "1.00",  # ← price в USDT (можно оставить, но в process_successful_payment мы фиксируем 99 RUB)
-                "new",
-                "0",  # key_id
-                "all_servers",  # host_name
-                "0",  # plan_id
-                customer_email or "None",
-                "CryptoBot"
-            ])
-
-            # ✅ Создаём инвойс ТОЛЬКО в USDT (без fiat / currency_type)
-            invoice = await crypto.create_invoice(
-                asset="USDT",
-                amount=usdt_amount,
-                description=f"Подписка на {months} мес. за 3 USDT",
-                payload=payload_str,
-                expires_in=3600
-            )
-
-            if not invoice or not invoice.pay_url:
-                raise Exception("Invoice creation returned empty pay_url")
-
-            logger.info(f"✅ CryptoBot invoice created for user {user_id}: {usdt_amount} USDT")
-
-            await callback.message.edit_text(
-                f"💳 Счёт на <b>{usdt_amount} USDT</b> создан.\n\n"
-                "Нажмите на кнопку ниже для оплаты:",
-                reply_markup=keyboards.create_payment_keyboard(invoice.pay_url),
-                parse_mode="HTML"
-            )
-            await state.clear()
-
-        except Exception as e:
-            logger.error(f"❌ CryptoBot invoice failed for {user_id}: {e}", exc_info=True)
-            await callback.message.edit_text(
-                "❌ Не удалось создать счёт в CryptoBot.\n\n"
-                "▫️ Убедитесь, что в CryptoBot App включён приём USDT.\n"
-                "▫️ Проверьте баланс приложения в USDT.",
-                reply_markup=keyboards.create_back_to_menu_keyboard()
-            )
-            await state.clear()
-        
+    async def get_invoice(call: types.CallbackQuery) -> None:
+        invoice = await crypto.create_invoice(1, "USDT")
+        await call.message.answer(f"pay: {invoice.mini_app_invoice_url}")
+        invoice.poll(message=call.message)
+    
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
     async def create_heleket_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счет Heleket...")
