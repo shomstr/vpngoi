@@ -43,6 +43,7 @@ class BotController:
         try:
             
             await asyncio.gather(
+                crypto.start_polling(),
                 dp.start_polling(bot) # Запуск polling для CryptoBot
             )
         except asyncio.CancelledError:

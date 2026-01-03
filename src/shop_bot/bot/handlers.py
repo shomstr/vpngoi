@@ -55,7 +55,7 @@ from shop_bot.config import (
 )
 cryptobot_token = get_setting('cryptobot_token')
 crypto = CryptoPay(cryptobot_token)
-crypto.start_polling()
+
 @crypto.invoice_paid()
 async def handle_payment(
         invoice: Invoice,
