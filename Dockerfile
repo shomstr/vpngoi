@@ -4,30 +4,27 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
-# Копируем файлы проекта
-COPY . .
+# Копируем requirements.txt
+COPY requirements.txt .
 
-# Создаем requirements.txt если его нет
-RUN if [ ! -f requirements.txt ]; then \
-    echo "aiogram==3.21.0" > requirements.txt && \
-    echo "flask==3.1.1" >> requirements.txt && \
-    echo "py3xui==0.4.0" >> requirements.txt && \
-    echo "pyotp==2.9.0" >> requirements.txt && \
-    echo "python-dotenv==1.1.1" >> requirements.txt && \
-    echo "qrcode[pil]==8.2" >> requirements.txt && \
-    echo "yookassa==3.5.0" >> requirements.txt && \
-    echo "aiosend==3.0.4" >> requirements.txt && \
-    echo "aiohttp==3.9.5" >> requirements.txt && \
-    echo "aiohttp-sse-client==0.2.1" >> requirements.txt && \
-    echo "pytonconnect==0.3.2" >> requirements.txt && \
-    echo "PyYAML==6.0.2" >> requirements.txt; \
-    fi
-
-# Устанавливаем зависимости
+# Устанавливаем зависимости в системе (не в venv)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Указываем путь для поиска модулей
-ENV PYTHONPATH=/app
+# Явно проверяем установку PyYAML
+RUN pip install --no-cache-dir PyYAML==6.0.2 && \
+    python -c "import yaml; print(f'PyYAML импортирован как yaml, версия установлена')"
 
+# Копируем весь проект
+COPY . .
+
+# Устанавливаем проект в режиме разработки (если есть setup.py)
+# Если нет setup.py, просто устанавливаем зависимости
+RUN if [ -f setup.py ]; then pip install -e .; fi
+
+# Устанавливаем PYTHONPATH чтобы видеть src/
+ENV PYTHONPATH=/app/src:/app
+
+# Запускаем из правильного пути
+WORKDIR /app
 CMD ["python", "-m", "shop_bot"]

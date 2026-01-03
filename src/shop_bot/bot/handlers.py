@@ -56,14 +56,7 @@ from shop_bot.config import (
 cryptobot_token = get_setting('cryptobot_token')
 crypto = CryptoPay(cryptobot_token)
 
-@crypto.invoice_paid()
-async def handle_payment(
-        invoice: Invoice,
-        message: Message,
-    ) -> None:
-        await message.answer(
-            f"payment received: {invoice.amount} {invoice.asset}",
-        )
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 TELEGRAM_BOT_USERNAME = None
@@ -1107,10 +1100,17 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
     async def get_invoice(call: types.CallbackQuery) -> None:
-        invoice = await crypto.create_invoice(1, "USDT")
+        invoice = await crypto.create_invoice(0.1, "USDT")
         await call.message.answer(f"pay: {invoice.mini_app_invoice_url}")
         invoice.poll(message=call.message)
-    
+    @crypto.invoice_paid()
+    async def handle_payment(
+            invoice: Invoice,
+            message: Message,
+        ) -> None:
+            await message.answer(
+                f"payment received: {invoice.amount} {invoice.asset}",
+            )
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
     async def create_heleket_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счет Heleket...")
