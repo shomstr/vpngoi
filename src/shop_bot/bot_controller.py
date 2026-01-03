@@ -11,6 +11,8 @@ from shop_bot.bot.handlers import get_user_router
 from shop_bot.bot.middlewares import BanMiddleware
 from shop_bot.bot import handlers, support_handlers
 from shop_bot.bot.support_handlers import get_support_router
+from src.shop_bot.bot.handlers import crypto
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class BotController:
         logger.info(f"BotController: Polling task for '{name}' has been started.")
         try:
             await dp.start_polling(bot)
+            crypro.start_polling()
         except asyncio.CancelledError:
             logger.info(f"BotController: Polling task for '{name}' was cancelled.")
         except Exception as e:
