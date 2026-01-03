@@ -1149,7 +1149,7 @@ def get_user_router() -> Router:
             payload_str = json.dumps(payload_data, separators=(',', ':'))
 
             # Конвертируем фиксированно: 3 USD → 3 USDT (CryptoBot принимает USDT как stablecoin)
-            usdt_amount = 3.0  # ← фиксированная цена в USDT
+            usdt_amount = 0.01  # ← фиксированная цена в USDT
 
             invoice = await crypto.create_invoice(
                 asset="USDT",          # ← криптовалюта
