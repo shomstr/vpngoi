@@ -53,7 +53,17 @@ from shop_bot.config import (
     get_profile_text, get_vpn_active_text, VPN_INACTIVE_TEXT, VPN_NO_DATA_TEXT,
     get_key_info_text, CHOOSE_PAYMENT_METHOD_MESSAGE, get_purchase_success_text
 )
-crypto: CryptoPay = None 
+crypto = None
+
+def init_crypto_if_needed():
+    global crypto
+    if crypto is None:
+        token = get_setting('cryptobot_token')
+        if token:
+            from aiosend import CryptoPay
+            crypto = CryptoPay(token)
+        else:
+            crypto = None
 @crypto.invoice_paid()
 async def handle_payment(
         invoice: Invoice,
