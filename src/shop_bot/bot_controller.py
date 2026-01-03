@@ -29,6 +29,7 @@ class BotController:
         self.support_dp = None
         self.support_task = None
         self.support_is_running = False
+        self.crypto_task = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
@@ -42,8 +43,10 @@ class BotController:
         logger.info(f"BotController: Polling task for '{name}' has been started.")
         try:
             
-            await dp.start_polling(bot)
-            await crypto.start_polling()
+            await asyncio.gather(
+                dp.start_polling(bot),
+                crypto.start_polling() if crypto else asyncio.sleep(0)  # Запуск polling для CryptoBot
+            )
         except asyncio.CancelledError:
             logger.info(f"BotController: Polling task for '{name}' was cancelled.")
         except Exception as e:
