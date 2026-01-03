@@ -97,6 +97,10 @@ class BotController:
 
             cryptobot_token = database.get_setting("cryptobot_token")
             cryptobot_enabled = bool(cryptobot_token)
+            if cryptobot_enabled:
+                from aiosend import CryptoPay
+                handlers.crypto = CryptoPay(cryptobot_token)  # ← инициализируем ГЛОБАЛЬНЫЙ crypto
+                handlers.setup_crypto_handler(self.shop_bot)   # ← регистрируем обработчик
 
             heleket_shop_id = database.get_setting("heleket_merchant_id")
             heleket_api_key = database.get_setting("heleket_api_key")
