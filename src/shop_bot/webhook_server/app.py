@@ -497,15 +497,13 @@ def create_webhook_app(bot_controller_instance):
             raw_text = "\n".join(vless_links)
             sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
 
-            trial_days = int(get_setting("trial_duration_days") or 1)
-            expiry_timestamp = int((datetime.now() + timedelta(days=trial_days)).timestamp())
 
             resp = make_response(sub_b64)
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"  # ← text/plain!
             resp.headers["Profile-Title"] = "base64:" + b64.b64encode("MoykaVPN".encode()).decode()
             resp.headers["Announce"] = "base64:" + b64.b64encode("Поддержка MoykaVPN24".encode()).decode()
             resp.headers["Announce-Url"] = "https://t.me/LOhotron1_bot"
-            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=429 496 729 600; expire={expiry_timestamp}"
+            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=429 496 729 600; expire={expiry_dt}"
             resp.headers["Update-Always"] = "true"
 
             return resp
