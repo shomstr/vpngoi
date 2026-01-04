@@ -4,12 +4,6 @@ from shop_bot.data_manager.database import add_new_key, get_setting, get_keys_fo
 from shop_bot.modules.xui_api import create_or_update_key_on_host  # ✅ существует
 import urllib.parse
 
-
-logger = logging.getLogger(__name__)
-
-# Замените это на ваш способ получения списка хостов
-# Например: from shop_bot.data_manager.database import get_all_hosts
-# Или импортируйте из конфига
 from shop_bot.data_manager.database import get_all_hosts  # ← убедитесь, что она есть или создайте
 
 from datetime import datetime, timedelta
@@ -29,15 +23,12 @@ async def create_keys_on_all_hosts_and_get_links(user_id: int) -> list[str]:
     for host in hosts:
         host_name = host["host_name"]
         email = f"user{user_id}@{host_name}"
-        logger.error(hosts)
         try:
             result = await create_or_update_key_on_host(
                 host_name=host_name,
                 email=email,
                 days_to_add=duration_days
             )
-            res = get_keys_for_host(host_name)
-            logger.error(res)
             if not result:
                 logger.error(f"Failed to create key on {host_name}")
                 continue

@@ -496,7 +496,7 @@ def create_webhook_app(bot_controller_instance):
 
             raw_text = "\n".join(vless_links)
             sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
-
+            logger.error(expiry_dt)
 
             resp = make_response(sub_b64)
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"  # ← text/plain!
@@ -505,7 +505,7 @@ def create_webhook_app(bot_controller_instance):
             resp.headers["Announce-Url"] = "https://t.me/LOhotron1_bot"
             resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=429 496 729 600; expire={expiry_dt}"
             resp.headers["Update-Always"] = "true"
-
+            logger.error(resp)
             return resp
 
         except Exception as e:
