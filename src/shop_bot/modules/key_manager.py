@@ -53,7 +53,7 @@ async def create_keys_on_all_hosts_and_get_links(user_id: int) -> list[str]:
 
                 connection_string = get_connection_string(
                     inbound=inbound,
-                    client_uuid=existing_key_for_host["xui_client_uuid"],
+                    user_uuid=existing_key_for_host["xui_client_uuid"],
                     host_url=host_data['host_url'],
                     remark=host_name
                 )
