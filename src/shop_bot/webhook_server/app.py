@@ -19,7 +19,7 @@ from shop_bot.bot import handlers
 from shop_bot.data_manager.database import (
     get_all_settings, update_setting, get_all_hosts, get_plans_for_host,
     create_host, delete_host, create_plan, delete_plan, get_user_count,
-    get_total_keys_count, get_total_spent_sum, get_daily_stats_for_charts,
+    get_total_keys_count, get_total_spent_sum, get_daily_stats_for_charts, get_user_id_and_expiry_by_uuid,
     get_recent_transactions, get_paginated_transactions, get_all_users, get_user_keys,
     ban_user, unban_user, delete_user_keys, get_setting, find_and_complete_ton_transaction, get_user_id_by_subscription_uuid
 )
@@ -473,10 +473,12 @@ def create_webhook_app(bot_controller_instance):
 
     @flask_app.route("/sub/<sub_uuid>")
     def serve_subscription(sub_uuid: str):
-        user_id = get_user_id_by_subscription_uuid(sub_uuid)
+        user_id, expiry_dt = get_user_id_and_expiry_by_uuid(sub_uuid)
         if not user_id:
             return "Not found", 404
-
+        now = datetime.now()
+        if expiry_dt and expiry_dt <= now:
+            return "Subscription expired", 403
         try:
             try:
                 loop = asyncio.get_event_loop()
@@ -491,7 +493,6 @@ def create_webhook_app(bot_controller_instance):
             if not vless_links:
                 return "No proxies available", 404
 
-            # Формируем ТЕКСТОВУЮ подписку (как у vinny-puh)
             raw_text = "\n".join(vless_links)
             sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
 
@@ -501,8 +502,10 @@ def create_webhook_app(bot_controller_instance):
 
             resp = make_response(sub_b64)
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"  # ← text/plain!
-            resp.headers["Profile-Title"] = "base64:" + b64.b64encode("Мой VPN".encode()).decode()
-            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expiry_timestamp}"
+            resp.headers["Profile-Title"] = "base64:" + b64.b64encode("MoykaVPN".encode()).decode()
+            resp.headers["Announce"] = "base64:" + b64.b64encode("Поддержка MoykaVPN24".encode()).decode()
+            resp.headers["Announce-Url"] = "https://t.me/LOhotron1_bot"
+            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=429 496 729 600; expire={expiry_timestamp}"
             resp.headers["Update-Always"] = "true"
 
             return resp

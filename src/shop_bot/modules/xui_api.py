@@ -223,6 +223,28 @@ async def get_key_details_from_host(key_data: dict) -> dict | None:
     connection_string = get_connection_string(inbound, key_data['xui_client_uuid'], host_db_data['host_url'], remark=host_name)
     return {"connection_string": connection_string}
 
+async def get_key_trafic_from_host(key_data: dict) -> dict | None:
+    host_name = key_data.get('host_name')
+    if not host_name:
+        logger.error(f"Could not get key details: host_name is missing for key_id {key_data.get('key_id')}")
+        return None
+
+    host_db_data = get_host(host_name)
+    if not host_db_data:
+        logger.error(f"Could not get key details: Host '{host_name}' not found in the database.")
+        return None
+
+    api, inbound = login_to_host(
+        host_url=host_db_data['host_url'],
+        username=host_db_data['host_username'],
+        password=host_db_data['host_pass'],
+        inbound_id=host_db_data['host_inbound_id']
+    )
+    if not api or not inbound: return None
+
+    connection_string = get_connection_string(inbound, key_data['xui_client_uuid'], host_db_data['host_url'], remark=host_name)
+    return {"connection_string": connection_string}
+
 async def delete_client_on_host(host_name: str, client_email: str) -> bool:
     host_data = get_host(host_name)
     if not host_data:

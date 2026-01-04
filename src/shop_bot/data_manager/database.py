@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 import json
@@ -137,14 +137,34 @@ def initialize_db():
         logging.error(f"Database error on initialization: {e}")
 
 
-def create_subscription_link(user_id: int) -> str:
+def create_subscription_link(user_id: int, days: int = None) -> str:
+    if days is None:
+        days = int(get_setting("trial_duration_days") or 3)
     sub_uuid = str(uuid.uuid4())
+    expires_at = datetime.now() + timedelta(days=days)
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(
-            "INSERT INTO subscription_links (uuid, user_id) VALUES (?, ?)",
-            (sub_uuid, user_id)
+            "INSERT INTO subscription_links (uuid, user_id, expires_at) VALUES (?, ?, ?)",
+            (sub_uuid, user_id, expires_at)
         )
     return sub_uuid
+
+def get_user_id_and_expiry_by_uuid(sub_uuid: str) -> tuple[int | None, datetime | None]:
+    with sqlite3.connect(DB_FILE) as conn:
+        row = conn.execute(
+            "SELECT user_id, expires_at FROM subscription_links WHERE uuid = ?",
+            (sub_uuid,)
+        ).fetchone()
+    if not row:
+        return None, None
+    user_id, expires_at_str = row
+    if not expires_at_str:
+        return user_id, None
+    try:
+        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+        return user_id, expires_at
+    except:
+        return user_id, None
 
 def get_user_id_by_subscription_uuid(sub_uuid: str) -> int | None:
     """По UUID подписки возвращает user_id."""
