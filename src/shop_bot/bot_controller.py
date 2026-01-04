@@ -11,8 +11,7 @@ from shop_bot.bot.handlers import get_user_router
 from shop_bot.bot.middlewares import BanMiddleware
 from shop_bot.bot import handlers, support_handlers
 from shop_bot.bot.support_handlers import get_support_router
-from src.shop_bot.bot.handlers import crypto
-
+from shop_bot.bot.handlers import crypto
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +42,8 @@ class BotController:
         try:
             
             await asyncio.gather(
-                crypto.start_polling(),
-                dp.start_polling(bot) # Запуск polling для CryptoBot
+                dp.start_polling(bot),
+                crypto.start_polling(), # <--- ЭТО ЗАПУСКАЕТ ПРОВЕРКУ ОПЛАТ
             )
         except asyncio.CancelledError:
             logger.info(f"BotController: Polling task for '{name}' was cancelled.")
@@ -96,10 +95,7 @@ class BotController:
 
             cryptobot_token = database.get_setting("cryptobot_token")
             cryptobot_enabled = bool(cryptobot_token)
-            if cryptobot_enabled:
-                from aiosend import CryptoPay
-                handlers.crypto = CryptoPay(cryptobot_token)  # ← инициализируем ГЛОБАЛЬНЫЙ crypto
-                handlers.setup_crypto_handler(self.shop_bot)   # ← регистрируем обработчик
+            
 
             heleket_shop_id = database.get_setting("heleket_merchant_id")
             heleket_api_key = database.get_setting("heleket_api_key")

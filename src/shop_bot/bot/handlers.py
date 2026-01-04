@@ -53,18 +53,45 @@ from shop_bot.config import (
     get_profile_text, get_vpn_active_text, VPN_INACTIVE_TEXT, VPN_NO_DATA_TEXT,
     get_key_info_text, CHOOSE_PAYMENT_METHOD_MESSAGE, get_purchase_success_text
 )
-cryptobot_token = get_setting('cryptobot_token')
-crypto = CryptoPay(cryptobot_token)
+crypto = CryptoPay("510028:AAK52iFlHYppzXMlw7flag4r60rMblmLE4y")
 
 @crypto.invoice_paid()
-async def handle_payment(
-        invoice: Invoice,
-        message: Message,
-    ) -> None:
-        await message.answer(
-            f"payment received: {invoice.amount} {invoice.asset}",
-        )
+async def handle_payment(invoice: Invoice, message: Message) -> None:
+    # Просто пишем пользователю, что деньги пришли
+    await message.answer(
+        f"✅ <b>Оплата успешна</b>: {invoice.amount} {invoice.asset}"
+    )
+    # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
+    YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
 
+    sub_uuid = create_subscription_link(message.from_user.id)
+
+    sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+    user_id = message.from_user.id
+
+    now = datetime.utcnow()
+    expiry_date = now + timedelta(days=30 * 1)  # 30 дней на 1 месяц
+    key_number = get_next_key_number(user_id)
+
+    fake_uuid = str(uuid.uuid4())
+    key_email = f"user{user_id}-key{key_number}@bot.sub"
+
+    new_key_id = add_new_key(
+        user_id=user_id,
+        host_name="all_servers",
+        xui_client_uuid=fake_uuid,  # ← фиктивный UUID
+        key_email=key_email,
+        expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
+    )
+    logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
+
+    await message.answer(
+        "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
+        f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
+        "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
+        parse_mode="HTML",
+        reply_markup=keyboards.create_back_to_menu_keyboard()
+    )
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 TELEGRAM_BOT_USERNAME = None
@@ -1107,11 +1134,27 @@ def get_user_router() -> Router:
             await state.clear()
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
-    async def get_invoice(call: types.CallbackQuery) -> None:
+    async def get_invoice(call: types.CallbackQuery, state: FSMContext) -> None:
+        await call.answer("Генерирую ссылку...")
+        
+        # 1. Создаем инвойс (например, на 1 USDT, как в примере)
         invoice = await crypto.create_invoice(0.1, "USDT")
-        await call.message.answer(f"pay: {invoice.mini_app_invoice_url}")
-      
-    
+        
+        # 2. ВАЖНО: Регистрируем его для отслеживания (без await!)
+        # Передаем call.message, чтобы библиотека знала, кому отвечать
+        invoice.poll(message=call.message) 
+        
+        # 3. Отправляем ссылку
+        await call.message.edit_text(
+            f"<b>💳 Оплата 💳</b>\n\n"
+            f"Для оплаты перейдите по ссылке:\n"
+            f"➜ <a href='{invoice.mini_app_invoice_url}'><b>ОПЛАТИТЬ СЕЙЧАС</b></a> ←\n\n"
+            f"Или нажмите кнопку ниже для удобства",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=keyboards.create_payment_keyboard(invoice.mini_app_invoice_url)
+        )
+        
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
     async def create_heleket_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Создаю счет Heleket...")

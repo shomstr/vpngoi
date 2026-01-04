@@ -7,7 +7,7 @@ from shop_bot.webhook_server.app import create_webhook_app
 from shop_bot.data_manager.scheduler import periodic_subscription_check
 from shop_bot.data_manager import database
 from shop_bot.bot_controller import BotController
-
+from shop_bot.bot.handlers import crypto
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -55,7 +55,9 @@ def main():
         await asyncio.Future()
 
     try:
+       
         asyncio.run(start_services())
+        
     finally:
         logger.info("Application is shutting down.")
 
