@@ -5,10 +5,10 @@ import json
 import hashlib
 import base64
 from hmac import compare_digest
-from datetime import datetime, timedelta
 from functools import wraps
 from math import ceil
 from flask import Flask, request, render_template, redirect, url_for, flash, session, current_app, make_response
+from datetime import datetime, timedelta
 
 
 logging.basicConfig(level=logging.INFO)
@@ -476,6 +476,7 @@ def create_webhook_app(bot_controller_instance):
         user_id, expiry_dt = get_user_id_and_expiry_by_uuid(sub_uuid)
         if not user_id:
             return "Not found", 404
+
         now = datetime.now()
         if expiry_dt and expiry_dt <= now:
             return "Subscription expired", 403
@@ -496,7 +497,6 @@ def create_webhook_app(bot_controller_instance):
             raw_text = "\n".join(vless_links)
             sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
 
-            from datetime import datetime, timedelta
             trial_days = int(get_setting("trial_duration_days") or 1)
             expiry_timestamp = int((datetime.now() + timedelta(days=trial_days)).timestamp())
 
