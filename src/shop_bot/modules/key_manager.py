@@ -28,7 +28,7 @@ async def create_keys_on_all_hosts_and_get_links(user_id: int) -> list[str]:
 
     for host in hosts:
         host_name = host["host_name"]
-        email = f"{user_id}_{int(datetime.now().timestamp())}@{host_name}"
+        email = f"user{user_id}@{host_name}"
         logger.error(hosts)
         try:
             result = await create_or_update_key_on_host(
