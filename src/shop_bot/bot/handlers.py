@@ -62,7 +62,7 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
         f"✅ <b>Оплата успешна</b>: {invoice.amount} {invoice.asset}"
     )
     # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-    YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
+    YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
 
     sub_uuid = create_subscription_link(message.from_user.id)
 
