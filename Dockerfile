@@ -6,8 +6,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src:/app
 
 # Установка системных зависимостей
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
         gcc \
         g++ \
         make \
