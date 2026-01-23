@@ -502,8 +502,8 @@ def create_webhook_app(bot_controller_instance):
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"  # ← text/plain!
             resp.headers["Profile-Title"] = "base64:" + b64.b64encode("MoykaVPN".encode()).decode()
             resp.headers["Announce"] = "base64:" + b64.b64encode("Поддержка MoykaVPN24".encode()).decode()
-            resp.headers["Announce-Url"] = "https://t.me/LOhotron1_bot"
-            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=429496729600; expire={expiry_dt}"
+            resp.headers["Announce-Url"] = "https://t.me/MoykaVPN_bot"
+            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expiry_dt}"
             resp.headers["Update-Always"] = "true"
             logger.error(resp)
             return resp
