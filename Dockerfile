@@ -4,27 +4,26 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
+# Устанавливаем Nginx
+RUN apt-get update && apt-get install -y nginx && \
+    rm -rf /var/lib/apt/lists/*
+
 # Копируем requirements.txt
 COPY requirements.txt .
 
-# Устанавливаем зависимости в системе (не в venv)
+# Устанавливаем зависимости
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
-
-# Явно проверяем установку PyYAML
-RUN pip install --no-cache-dir PyYAML==6.0.2 && \
-    python -c "import yaml; print(f'PyYAML импортирован как yaml, версия установлена')"
 
 # Копируем весь проект
 COPY . .
 
-# Устанавливаем проект в режиме разработки (если есть setup.py)
-# Если нет setup.py, просто устанавливаем зависимости
-RUN if [ -f setup.py ]; then pip install -e .; fi
+# Копируем конфиг Nginx (создадим его ниже)
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Устанавливаем PYTHONPATH чтобы видеть src/
+# Устанавливаем PYTHONPATH
 ENV PYTHONPATH=/app/src:/app
 
 # Запускаем из правильного пути
 WORKDIR /app
-CMD ["python", "-m", "shop_bot"]
+CMD ["sh", "-c", "nginx && python -m shop_bot"]
