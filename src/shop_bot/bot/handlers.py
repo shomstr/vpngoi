@@ -186,7 +186,7 @@ def get_user_router() -> Router:
         referrer_id = None
         await bot.send_sticker(
             chat_id=message.chat.id,
-            sticker="CAACAgIAAxkBAAEQKFNpWCvgBM3l5n0lner3ofL6oF-qcgAC7pIAAmmbwEoNgwjEFsXOgjgE"
+            sticker="CAACAgIAAxkBAAEQUNRpc9GtRzJ3vqEaJ6LMe6vMN47NWgACdJIAAl6C4Uq6I0zN6nIY7zgE"
         )
 
         if command.args and command.args.startswith('ref_'):
@@ -259,7 +259,7 @@ def get_user_router() -> Router:
         try:
             await callback.bot.send_sticker(
             chat_id=callback.message.chat.id,
-            sticker="CAACAgIAAxkBAAEQKFFpWCvdP8ApGVhO0kzwYJJQjrBHkgAC0JYAAtckwUp3QP5GEx6Y7DgE"
+            sticker="CAACAgIAAxkBAAEQUNNpc9GsdOuLJjQ3O29jX6RZqg_MYQAC1o0AAvsL4UrQdyLkV8bodzgE"
         )
             # Генерируем или получаем UUID подписки
             sub_uuid = create_subscription_link(user_id)
@@ -1452,7 +1452,7 @@ def get_user_router() -> Router:
             )
             logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
 
-            await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE")
+            await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQUNNpc9GsdOuLJjQ3O29jX6RZqg_MYQAC1o0AAvsL4UrQdyLkV8bodzgE")
 
             await message.answer(
                 "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
@@ -1806,7 +1806,7 @@ async def process_successful_payment(bot: Bot, metadata: dict):
 
         await bot.send_sticker(
             chat_id=user_id,
-            sticker="CAACAgIAAxkBAAEQKFVpWCviAjFrsy8y7uif5uYlW7rSKgACf44AAqqfwEoucbsDjGIfVTgE"
+            sticker="CAACAgIAAxkBAAEQUNNpc9GsdOuLJjQ3O29jX6RZqg_MYQAC1o0AAvsL4UrQdyLkV8bodzgE"
         )
 
         success_text = (
