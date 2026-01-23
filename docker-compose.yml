@@ -1,24 +1,32 @@
 
 services:
-  bot:
-    build: .
-    restart: unless-stopped
-    expose:
-      - "1488"  # только для внутренней сети Docker
-    volumes:
-      - ./cert.pem:/app/cert.pem:ro
-      - ./key.pem:/app/key.pem:ro
-    # Не открываем порты напрямую — всё через Nginx
-
   nginx:
     image: nginx:alpine
+    container_name: nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./cert.pem:/etc/nginx/ssl/cert.pem:ro
-      - ./key.pem:/etc/nginx/ssl/key.pem:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # <-- эта строка
+      - ./cert.pem:/etc/nginx/ssl/cert.pem:ro  # <-- эта строка
+      - ./key.pem:/etc/nginx/ssl/key.pem:ro    # <-- эта строка
     depends_on:
       - bot
+    networks:
+      - vpn-network
+
+  bot:
+    build: .
+    container_name: bot
+    restart: unless-stopped
+    volumes:
+      - .:/app/project
+    expose:
+      - "1488"
+    networks:
+      - vpn-network
+
+networks:
+  vpn-network:
+    driver: bridge
