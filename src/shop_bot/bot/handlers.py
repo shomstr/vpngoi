@@ -70,7 +70,8 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
     user_id = message.from_user.id
 
     now = datetime.utcnow()
-    expiry_date = now + timedelta(days=30 * 1)  # 30 дней на 1 месяц
+    referral_count = get_referral_count(user_id)
+    expiry_date = now + timedelta(days=30 * 1 + referral_count)  # 30 дней на 1 месяц
     key_number = get_next_key_number(user_id)
 
     fake_uuid = str(uuid.uuid4())
@@ -88,7 +89,7 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
     await message.answer(
         "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
         f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
-        "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
+        f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.\nСрок действия {expiry_date}",
         parse_mode="HTML",
         reply_markup=keyboards.create_back_to_menu_keyboard()
     )
@@ -1435,7 +1436,8 @@ def get_user_router() -> Router:
             user_id = message.from_user.id
 
             now = datetime.utcnow()
-            expiry_date = now + timedelta(days=30 * 1)  # 30 дней на 1 месяц
+            referral_count = get_referral_count(user_id)
+            expiry_date = now + timedelta(days=30 * 1 + referral_count)   # 30 дней на 1 месяц
             key_number = get_next_key_number(user_id)
 
             fake_uuid = str(uuid.uuid4())
@@ -1455,7 +1457,7 @@ def get_user_router() -> Router:
             await message.answer(
                 "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
                 f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
-                "📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
+                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.\nПодписка на {expiry_date}",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
             )
