@@ -41,7 +41,7 @@ def main():
             loop.add_signal_handler(sig, lambda sig=sig: asyncio.create_task(shutdown(sig, loop)))
         
         flask_thread = threading.Thread(
-            target=lambda: flask_app.run(host='127.0.0.1', port=1488, use_reloader=False, debug=False),
+            target=lambda: flask_app.run(host='0.0.0.0', port=1488, use_reloader=False, debug=False),
             daemon=True
         )
         flask_thread.start()
