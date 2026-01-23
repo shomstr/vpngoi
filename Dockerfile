@@ -5,19 +5,28 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src:/app
 
-# Копируем только requirements.txt первым — чтобы кэшировать зависимости
+# Установка системных зависимостей
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        make \
+        libffi-dev \
+        libssl-dev \
+        zlib1g-dev \
+        libjpeg-dev \
+        libpng-dev \
+        freetype-dev \
+        && rm -rf /var/lib/apt/lists/*
+
+# Копируем requirements.txt
 COPY requirements.txt .
 
-# Устанавливаем зависимости (без --no-cache-dir для кэширования)
+# Устанавливаем зависимости
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Явно проверяем PyYAML — только если он НЕ в requirements.txt
-# Если он там — уберите эту строку!
-RUN pip install PyYAML==6.0.2 && \
-    python -c "import yaml; print('PyYAML imported successfully')"
-
-# Копируем весь проект — после установки зависимостей
+# Копируем весь проект
 COPY . .
 
 # Устанавливаем проект в режиме разработки (если есть setup.py)
