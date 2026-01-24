@@ -66,7 +66,7 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
 
     sub_uuid = create_subscription_link(message.from_user.id)
 
-    sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+    sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
     user_id = message.from_user.id
 
     now = datetime.utcnow()
@@ -267,7 +267,7 @@ def get_user_router() -> Router:
             # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
             YOUR_DOMAIN = "ns1.moykavpn.ru"  # ← сюда ваш домен
 
-            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+            sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
             await callback.message.answer(
                 "✅ <b>Ваша пробная ссылка на подписку:</b>\n\n"
@@ -295,9 +295,9 @@ def get_user_router() -> Router:
             sub_uuid = create_subscription_link(user_id)
 
             # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-            YOUR_DOMAIN = "213.176.74.138:1488"  # ← сюда ваш домен
+            YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
 
-            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+            sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
             await callback.message.answer(
                 "✅ <b>Ваша персональная ссылка на подписку:</b>\n\n"
@@ -1432,7 +1432,7 @@ def get_user_router() -> Router:
             # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
             YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
 
-            sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+            sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
             user_id = message.from_user.id
 
             now = datetime.utcnow()
@@ -1737,7 +1737,7 @@ async def process_successful_payment(bot: Bot, metadata: dict):
         # === 1. Создаём подписку (как раньше) ===
         sub_uuid = create_subscription_link(user_id)
         YOUR_DOMAIN = "213.176.74.138:1488"  # ← ЗАМЕНИТЕ НА ВАШ ДОМЕН
-        sub_url = f"http://{YOUR_DOMAIN}/sub/{sub_uuid}"
+        sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
         # === 2. Добавляем ключ в БД (фиктивные данные, без XUI) ===
         now = datetime.utcnow()
