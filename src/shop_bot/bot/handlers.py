@@ -85,14 +85,15 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
         expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
     )
     logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
+    expiry_formatted = expiry_date.strftime("%d.%m.%Y %H:%M:%S")
 
     await message.answer(
-        "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
-        f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
-        f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
-        parse_mode="HTML",
-        reply_markup=keyboards.create_back_to_menu_keyboard()
-    )
+                "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
+                f"<blockquote><code>{sub_url}</code></blockquote>\n\<b>Активна до: {expiry_formatted}</b>\n\n"
+                f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
+                parse_mode="HTML",
+                reply_markup=keyboards.create_back_to_menu_keyboard()
+            )
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 TELEGRAM_BOT_USERNAME = None
@@ -1422,6 +1423,7 @@ def get_user_router() -> Router:
                         # Внутри on_successful_payment_stars, после получения metadata:
             months = metadata.get("months", 1)
             expiry_date = now + timedelta(days=30 * months + referral_count)   # 30 дней на 1 месяц
+            expiry_formatted = expiry_date.strftime("%d.%m.%Y %H:%M:%S")
             key_number = get_next_key_number(user_id)
 
             fake_uuid = str(uuid.uuid4())
@@ -1440,7 +1442,7 @@ def get_user_router() -> Router:
 
             await message.answer(
                 "🎉<b>УСПЕШНО! Спасибо за покупку</b>\n✅ <i>Ваша персональная ссылка на подписку:</i>\n\n"
-                f"<blockquote><code>{sub_url}</code></blockquote>\n\n"
+                f"<blockquote><code>{sub_url}</code></blockquote>\n\<b>Активна до: {expiry_formatted}</b>\n\n"
                 f"📎 Скопируйте её и добавьте в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayTun</b> или <b>NekoBox</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboards.create_back_to_menu_keyboard()
@@ -1505,9 +1507,9 @@ def get_user_router() -> Router:
         # Определяем цены
         is_all = (host_name == "all_servers")
         prices = {
-            1: {"usdt": 1.0 if is_all else 0.1, "stars": 1 if is_all else 1},
-            3: {"usdt": 2.5 if is_all else 1.5, "stars": 250 if is_all else 2},
-            6: {"usdt": 4.5 if is_all else 3.5, "stars": 450 if is_all else 3},
+            1: {"usdt": 1.0 if is_all else 0.7, "stars": 100 if is_all else 70},
+            3: {"usdt": 2.5 if is_all else 1.5, "stars": 250 if is_all else 150},
+            6: {"usdt": 4.5 if is_all else 3.5, "stars": 450 if is_all else 350},
         }
 
         price_usdt = prices[months]["usdt"]
