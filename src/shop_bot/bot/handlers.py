@@ -1425,13 +1425,14 @@ def get_user_router() -> Router:
             expiry_date = now + timedelta(days=30 * months + referral_count)   # 30 дней на 1 месяц
             expiry_formatted = expiry_date.strftime("%d.%m.%Y %H:%M:%S")
             key_number = get_next_key_number(user_id)
+            host_name = metadata.get('host_name', 'all_servers')
 
             fake_uuid = str(uuid.uuid4())
             key_email = f"user{user_id}-key{key_number}@bot.sub"
 
             new_key_id = add_new_key(
                 user_id=user_id,
-                host_name="all_servers",
+                host_name=host_name,
                 xui_client_uuid=fake_uuid,  # ← фиктивный UUID
                 key_email=key_email,
                 expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
