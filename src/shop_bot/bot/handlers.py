@@ -1022,9 +1022,7 @@ def get_user_router() -> Router:
             await message.answer(
                 CHOOSE_PAYMENT_METHOD_MESSAGE,
                 reply_markup=keyboards.create_payment_method_keyboard(
-                    payment_methods=PAYMENT_METHODS,
-                    action=data.get('action'),
-                    key_id=data.get('key_id')
+                    payment_methods={"cryptobot": True, "stars": True}
                 )
             )
             await state.set_state(PaymentProcess.waiting_for_payment_method)
@@ -1041,9 +1039,7 @@ def get_user_router() -> Router:
         await callback.message.edit_text(
             CHOOSE_PAYMENT_METHOD_MESSAGE,
             reply_markup=keyboards.create_payment_method_keyboard(
-                payment_methods=PAYMENT_METHODS,
-                action=data.get('action'),
-                key_id=data.get('key_id')
+                payment_methods={"cryptobot": True, "stars": True}
             )
         )
         await state.set_state(PaymentProcess.waiting_for_payment_method)
@@ -1083,9 +1079,7 @@ def get_user_router() -> Router:
         await message.edit_text(
             message_text,
             reply_markup=keyboards.create_payment_method_keyboard(
-                payment_methods=PAYMENT_METHODS,
-                action=data.get('action'),
-                key_id=data.get('key_id')
+                payment_methods={"cryptobot": True, "stars": True}
             )
         )
         await state.set_state(PaymentProcess.waiting_for_payment_method)
@@ -1534,9 +1528,7 @@ def get_user_router() -> Router:
             f"• {price_stars} ⭐️ Stars\n\n"
             "Выберите способ оплаты:",
             reply_markup=keyboards.create_payment_method_keyboard(
-                payment_methods={"cryptobot": True, "stars": True},  # Только эти два
-                action="new",
-                key_id=0
+                payment_methods={"cryptobot": True, "stars": True}
             )
         )
         await state.set_state(PaymentProcess.waiting_for_payment_method)
