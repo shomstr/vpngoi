@@ -405,7 +405,6 @@ def get_user_router() -> Router:
             reply_markup=keyboards.create_back_to_menu_keyboard()
         )
 
-
     @user_router.callback_query(F.data == "start_broadcast")
     @registration_required
     async def start_broadcast_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -1159,24 +1158,20 @@ def get_user_router() -> Router:
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_cryptobot")
     async def get_invoice(call: types.CallbackQuery, state: FSMContext) -> None:
         await call.answer("Генерирую ссылку...")
-        
-        # 1. Создаем инвойс (например, на 1 USDT, как в примере)
-        invoice = await crypto.create_invoice(0.1, "USDT")
-        
-        # 2. ВАЖНО: Регистрируем его для отслеживания (без await!)
-        # Передаем call.message, чтобы библиотека знала, кому отвечать
-        invoice.poll(message=call.message) 
-        
-        # 3. Отправляем ссылку
+        data = await state.get_data()
+        amount_usdt = data["price_usdt"]
+
+        invoice = await crypto.create_invoice(amount_usdt, "USDT")
+        invoice.poll(message=call.message)  # отслеживание
+
         await call.message.edit_text(
-            f"<b>💳 Оплата 💳</b>\n\n"
-            f"Для оплаты перейдите по ссылке:\n"
-            f"➜ <a href='{invoice.mini_app_invoice_url}'><b>ОПЛАТИТЬ СЕЙЧАС</b></a> ←\n\n"
-            f"Или нажмите кнопку ниже для удобства",
+            f"<b>💳 Оплата через CryptoBot</b>\n"
+            f"Сумма: <code>{amount_usdt} USDT</code>\n"
+            f"Нажмите кнопку ниже для оплаты:",
             parse_mode="HTML",
-            disable_web_page_preview=True,
             reply_markup=keyboards.create_payment_keyboard(invoice.mini_app_invoice_url)
         )
+        await state.clear()
         
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_heleket")
     async def create_heleket_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -1302,81 +1297,52 @@ def get_user_router() -> Router:
 
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_stars")
     async def buy_premium_stars_handler(callback: types.CallbackQuery, state: FSMContext):
-        """Обработчик оплаты через Telegram Stars — ФИКС: 99 Stars, 1 месяц, без plan_id"""
-        user_id = callback.from_user.id
-
-        # ✅ Отвечаем на callback сразу
         try:
             await callback.answer("Создаю счёт...", show_alert=False)
-        except TelegramBadRequest as e:
-            if "query is too old" in str(e):
-                logger.warning(f"Callback expired for user {user_id}")
-                return
-            raise
+        except TelegramBadRequest:
+            return
+
+        data = await state.get_data()
+        await state.clear()
+
+        stars_count = int(data["price_stars"])
+        months = data["months"]
+        host_name = data["host_name"]
+        user_id = callback.from_user.id
+
+        payment_id = f"s_{uuid.uuid4().hex[:8]}"
+        _pending_stars_payments[payment_id] = {
+            "user_id": user_id,
+            "months": months,
+            "price": 0,  # не используется для Stars
+            "action": "new",
+            "key_id": 0,
+            "host_name": host_name,
+            "plan_id": 0,
+            "customer_email": "",
+            "payment_method": "Telegram Stars",
+            "created_at": datetime.utcnow()
+        }
+
+        # Очистка старых
+        now = datetime.utcnow()
+        for pid in list(_pending_stars_payments.keys()):
+            if now - _pending_stars_payments[pid]["created_at"] > timedelta(minutes=10):
+                del _pending_stars_payments[pid]
 
         try:
-            data = await state.get_data()
-            await state.clear()
+            await callback.message.delete()
+        except:
+            pass
 
-            # 🔥 ЖЁСТКО ФИКСИРУЕМ: 99 Stars, 1 месяц, plan_id=0, host_name="all_servers"
-            stars_count = 99
-            months = 1
-            price_rub = 99.0
-            action = data.get('action', 'new')
-            key_id = data.get('key_id', 0)
-            host_name = "all_servers"
-            plan_id = 0
-            customer_email = data.get('customer_email')
-
-            # Генерируем короткий ID
-            payment_id = f"s_{uuid.uuid4().hex[:8]}"
-
-            # Сохраняем в глобальное временное хранилище
-            _pending_stars_payments[payment_id] = {
-                "user_id": user_id,
-                "months": months,
-                "price": 99.0,
-                "action": action,
-                "key_id": key_id,
-                "host_name": host_name,
-                "plan_id": plan_id,
-                "customer_email": customer_email or "",
-                "payment_method": "Telegram Stars",
-                "created_at": datetime.utcnow()
-            }
-
-            # Очистка устаревших (>10 мин)
-            now = datetime.utcnow()
-            for pid in list(_pending_stars_payments.keys()):
-                if now - _pending_stars_payments[pid]["created_at"] > timedelta(minutes=10):
-                    del _pending_stars_payments[pid]
-
-            # Удаляем сообщение
-            try:
-                await callback.message.delete()
-            except:
-                pass
-
-            # Отправляем инвойс с КОРОТКИМ payload
-            await callback.message.answer_invoice(
-                title="Подписка на 1 месяц",
-                description="Фиксированная подписка: 99 Stars",
-                currency="XTR",
-                prices=get_stars_payment(1, "1 месяц"),
-                payload=payment_id,  # ← ТОЛЬКО "s_abc123de"
-                provider_token=""
-            )
-            logger.info(f"Stars invoice sent. ID: {payment_id}, user: {user_id}")
-
-        except Exception as e:
-            logger.error(f"Stars error for user {user_id}: {e}", exc_info=True)
-            try:
-                await callback.message.answer(
-                    "❌ Не удалось создать счёт через Stars.\n"
-                    "Попробуйте выбрать другой способ оплаты."
-                )
-            except:
-                pass
+        await callback.message.answer_invoice(
+            title=f"Подписка на {months} мес.",
+            description=f"{'Все сервера' if host_name == 'all_servers' else host_name}",
+            currency="XTR",
+            prices=[LabeledPrice(label=f"{months} мес.", amount=stars_count)],
+            payload=payment_id,
+            provider_token=""
+        )
     @user_router.pre_checkout_query()
     async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
         """Обработчик предварительной проверки платежа"""
@@ -1452,14 +1418,16 @@ def get_user_router() -> Router:
             sub_uuid = create_subscription_link(message.from_user.id)
 
             # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-            YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
+            YOUR_DOMAIN = "ns1.moykavpn.ru"  # ← сюда ваш домен
 
             sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
             user_id = message.from_user.id
 
             now = datetime.utcnow()
             referral_count = get_referral_count(user_id)
-            expiry_date = now + timedelta(days=30 * 1 + referral_count)   # 30 дней на 1 месяц
+                        # Внутри on_successful_payment_stars, после получения metadata:
+            months = metadata.get("months", 1)
+            expiry_date = now + timedelta(days=30 * months + referral_count)   # 30 дней на 1 месяц
             key_number = get_next_key_number(user_id)
 
             fake_uuid = str(uuid.uuid4())
@@ -1487,7 +1455,91 @@ def get_user_router() -> Router:
         except Exception as e:
             logger.error(f"Error processing successful Stars payment: {e}", exc_info=True)
             await message.answer("❌ Ошибка при обработке платежа. Обратитесь в поддержку.")
-    
+
+
+    @user_router.callback_query(F.data == "buy_new_key")
+    @registration_required
+    async def buy_new_key_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        hosts = get_all_hosts()
+        if not hosts:
+            await callback.message.edit_text("❌ В данный момент нет доступных серверов для покупки.")
+            return
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🌐 Все сервера", callback_data="select_duration_all")
+        for host in hosts:
+            builder.button(text=f"📍 {host['host_name']}", callback_data=f"select_duration_{host['host_name']}")
+        builder.button(text="⬅️ Назад", callback_data="back_to_main_menu")
+        builder.adjust(1)
+
+        await callback.message.edit_text(
+            "<b>Выберите тип подписки:</b>",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    @user_router.callback_query(F.data.startswith("select_duration_"))
+    @registration_required
+    async def select_duration_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        data = callback.data[len("select_duration_"):]
+        host_name = "all_servers" if data == "all" else data
+        await state.update_data(host_name=host_name)
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📅 1 месяц", callback_data="set_months_1")
+        builder.button(text="📅 3 месяца", callback_data="set_months_3")
+        builder.button(text="📅 6 месяцев", callback_data="set_months_6")
+        builder.button(text="⬅️ Назад", callback_data="buy_new_key")
+        builder.adjust(1)
+
+        desc = "на все сервера" if host_name == "all_servers" else f"на сервер: {host_name}"
+        await callback.message.edit_text(
+            f"<b>Выберите срок подписки</b> {desc}:",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+
+    @user_router.callback_query(F.data.startswith("set_months_"))
+    @registration_required
+    async def set_months_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        months = int(callback.data.split("_")[2])
+        data = await state.get_data()
+        host_name = data["host_name"]
+
+        # Определяем цены
+        is_all = (host_name == "all_servers")
+        prices = {
+            1: {"usdt": 1.0 if is_all else 0.7, "stars": 100 if is_all else 70},
+            3: {"usdt": 2.5 if is_all else 1.5, "stars": 250 if is_all else 150},
+            6: {"usdt": 4.5 if is_all else 3.5, "stars": 450 if is_all else 350},
+        }
+
+        price_usdt = prices[months]["usdt"]
+        price_stars = prices[months]["stars"]
+
+        await state.update_data(
+            months=months,
+            price_usdt=price_usdt,
+            price_stars=price_stars,
+            action="new",
+            key_id=0,
+            customer_email=None  # не используется
+        )
+
+        await callback.message.edit_text(
+            f"💰 <b>Стоимость:</b>\n"
+            f"• {price_usdt} USDT\n"
+            f"• {price_stars} ⭐️ Stars\n\n"
+            "Выберите способ оплаты:",
+            reply_markup=keyboards.create_payment_method_keyboard(
+                payment_methods={"cryptobot": True, "stars": True},  # Только эти два
+                action="new",
+                key_id=0
+            )
+        )
+        await state.set_state(PaymentProcess.waiting_for_payment_method)
     # Добавьте этот обработчик для отладки всех successful_payment
     @user_router.message(F.successful_payment)
     async def debug_all_payments(message: Message, bot: Bot):
@@ -1758,7 +1810,7 @@ async def process_successful_payment(bot: Bot, metadata: dict):
     try:
         # === 1. Создаём подписку (как раньше) ===
         sub_uuid = create_subscription_link(user_id)
-        YOUR_DOMAIN = "213.176.74.138:1488"  # ← ЗАМЕНИТЕ НА ВАШ ДОМЕН
+        YOUR_DOMAIN = "213.176.74.138"  # ← ЗАМЕНИТЕ НА ВАШ ДОМЕН
         sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
         # === 2. Добавляем ключ в БД (фиктивные данные, без XUI) ===
@@ -1858,3 +1910,5 @@ async def process_successful_payment(bot: Bot, metadata: dict):
             await processing_message.edit_text("❌ Ошибка при создании подписки. Обратитесь в поддержку.")
         except:
             pass
+
+

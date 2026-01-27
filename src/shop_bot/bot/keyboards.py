@@ -1,3 +1,4 @@
+
 import logging
 
 from datetime import datetime
@@ -77,10 +78,10 @@ def create_support_keyboard(support_user: str) -> InlineKeyboardMarkup:
 def create_host_selection_keyboard(hosts: list, action: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for host in hosts:
-        callback_data = f"select_host_{action}_{host['host_name']}"
-        builder.button(text=host['host_name'], callback_data='d')
-    builder.button(text="🌐 Подписка на все серверы", callback_data="buy_full_subscription")
-    builder.button(text="⬅️ Назад", callback_data="manage_keys" if action == 'new' else "back_to_main_menu")
+        callback_data = f"select_duration_{host['host_name']}"
+        builder.button(text=host['host_name'], callback_data=callback_data)
+    builder.button(text="🌐 Подписка на все серверы", callback_data="select_duration_all")
+    builder.button(text="⬅️ Назад", callback_data="back_to_main_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -111,27 +112,13 @@ def create_skip_email_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def create_payment_method_keyboard(payment_methods: dict, action: str, key_id: int) -> InlineKeyboardMarkup:
+def create_payment_method_keyboard(payment_methods: dict) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-
-    if payment_methods and payment_methods.get("yookassa"):
-        if get_setting("sbp_enabled"):
-            builder.button(text="🏦 СБП / Банковская карта", callback_data="pay_yookassa")
-        else:
-            builder.button(text="🏦 Банковская карта", callback_data="pay_yookassa")
-    if payment_methods and payment_methods.get("heleket"):
-        builder.button(text="💎 Криптовалюта", callback_data="pay_heleket")
-    if payment_methods and payment_methods.get("cryptobot"):
+    if payment_methods.get("cryptobot"):
         builder.button(text="🤖 CryptoBot", callback_data="pay_cryptobot")
-    if payment_methods and payment_methods.get("tonconnect"):
-        callback_data_ton = "pay_tonconnect"
-        logger.info(f"Creating TON button with callback_data: '{callback_data_ton}'")
-        builder.button(text="🪙 TON Connect", callback_data=callback_data_ton)
-
-    
-    builder.button(text="⭐️ Telegram Stars", callback_data="pay_stars")
-
-    builder.button(text="⬅️ Назад", callback_data="back_to_email_prompt")
+    if payment_methods.get("stars"):
+        builder.button(text="⭐️ Telegram Stars", callback_data="pay_stars")
+    builder.button(text="⬅️ Назад", callback_data="buy_new_key")
     builder.adjust(1)
     return builder.as_markup()
 
