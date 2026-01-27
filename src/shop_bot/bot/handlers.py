@@ -62,7 +62,7 @@ async def handle_payment(invoice: Invoice, message: Message) -> None:
         f"✅ <b>Оплата успешна</b>: {invoice.amount} {invoice.asset}"
     )
     # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-    YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
+    YOUR_DOMAIN = "ns1.moykavpn.ru"  # ← сюда ваш домен
 
     sub_uuid = create_subscription_link(message.from_user.id)
 
@@ -295,7 +295,7 @@ def get_user_router() -> Router:
             sub_uuid = create_subscription_link(user_id)
 
             # ⚠️ ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ДОМЕН!
-            YOUR_DOMAIN = "ns1.moykavpn.ru:1488"  # ← сюда ваш домен
+            YOUR_DOMAIN = "ns1.moykavpn.ru"  # ← сюда ваш домен
 
             sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
 
@@ -370,19 +370,41 @@ def get_user_router() -> Router:
         if not user_db_data:
             await callback.answer("Не удалось получить данные профиля.", show_alert=True)
             return
+    
+        # Генерируем или получаем UUID подписки
+        sub_uuid = create_subscription_link(user_id)  # Убедитесь, что эта функция идемпотентна!
+        YOUR_DOMAIN = "ns1.moykavpn.ru"
+        sub_url = f"https://{YOUR_DOMAIN}/sub/{sub_uuid}"
+    
         username = html.bold(user_db_data.get('username', 'Пользователь'))
         total_spent, total_months = user_db_data.get('total_spent', 0), user_db_data.get('total_months', 0)
         now = datetime.now()
         active_keys = [key for key in user_keys if datetime.fromisoformat(key['expiry_date']) > now]
+        
         if active_keys:
             latest_key = max(active_keys, key=lambda k: datetime.fromisoformat(k['expiry_date']))
             latest_expiry_date = datetime.fromisoformat(latest_key['expiry_date'])
             time_left = latest_expiry_date - now
             vpn_status_text = get_vpn_active_text(time_left.days, time_left.seconds // 3600)
-        elif user_keys: vpn_status_text = VPN_INACTIVE_TEXT
-        else: vpn_status_text = VPN_NO_DATA_TEXT
-        final_text = get_profile_text(username, total_spent, total_months, vpn_status_text)
-        await callback.message.edit_text(final_text, reply_markup=keyboards.create_back_to_menu_keyboard())
+        elif user_keys:
+            vpn_status_text = VPN_INACTIVE_TEXT
+        else:
+            vpn_status_text = VPN_NO_DATA_TEXT
+    
+        # Обновляем текст профиля, включая ссылку
+        final_text = (
+            f"{get_profile_text(username, total_spent, total_months, vpn_status_text)}\n\n"
+            f"🔗 <b>Ссылка на подписку:</b>\n"
+            f"<code>{sub_url}</code>\n\n"
+            "💡 Используйте её в <b>Clash Meta</b>, <b>Stash</b>, <b>v2RayNG</b> или <b>NekoBox</b>."
+        )
+    
+        await callback.message.edit_text(
+            final_text,
+            parse_mode="HTML",
+            reply_markup=keyboards.create_back_to_menu_keyboard()
+        )
+
 
     @user_router.callback_query(F.data == "start_broadcast")
     @registration_required

@@ -136,18 +136,33 @@ def initialize_db():
     except sqlite3.Error as e:
         logging.error(f"Database error on initialization: {e}")
 
-
 def create_subscription_link(user_id: int, days: int = None) -> str:
+    """
+    Возвращает UUID активной подписки пользователя.
+    Если активной нет — создаёт новую на указанный срок (или trial_duration_days).
+    """
     if days is None:
         days = int(get_setting("trial_duration_days") or 3)
-    sub_uuid = str(uuid.uuid4())
-    expires_at = datetime.now() + timedelta(days=days)
+
+    now = datetime.now()
     with sqlite3.connect(DB_FILE) as conn:
+        # Ищем существующую НЕИСТЕКШУЮ подписку
+        cursor = conn.execute(
+            "SELECT uuid FROM subscription_links WHERE user_id = ? AND expires_at > ?",
+            (user_id, now.isoformat())
+        )
+        row = cursor.fetchone()
+        if row:
+            return row[0]  # Возвращаем существующую
+
+        # Если нет — создаём новую
+        sub_uuid = str(uuid.uuid4())
+        expires_at = now + timedelta(days=days)
         conn.execute(
             "INSERT INTO subscription_links (uuid, user_id, expires_at) VALUES (?, ?, ?)",
             (sub_uuid, user_id, expires_at)
         )
-    return sub_uuid
+        return sub_uuid
 
 def get_user_id_and_expiry_by_uuid(sub_uuid: str) -> tuple[int | None, datetime | None]:
     with sqlite3.connect(DB_FILE) as conn:
