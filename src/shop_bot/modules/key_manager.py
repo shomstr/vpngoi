@@ -1,10 +1,10 @@
 import logging
 from datetime import datetime, timedelta
 from shop_bot.data_manager.database import add_new_key, get_setting, get_keys_for_host, get_user_keys, get_host
-from shop_bot.modules.xui_api import create_or_update_key_on_host  # ✅ существует
+from shop_bot.modules.xui_api import create_or_update_key_on_host  
 import urllib.parse
 
-from shop_bot.data_manager.database import get_all_hosts  # ← убедитесь, что она есть или создайте
+from shop_bot.data_manager.database import get_all_hosts  
 
 from datetime import datetime, timedelta
 import logging
@@ -28,7 +28,7 @@ async def get_existing_vless_links_for_user(user_id: int) -> list[str]:
         xui_client_uuid = key["xui_client_uuid"]
 
         host_data = get_host(host_name)
-        if not host_
+        if not host_data:
             logger.warning(f"Host '{host_name}' not found for user {user_id}")
             continue
 
