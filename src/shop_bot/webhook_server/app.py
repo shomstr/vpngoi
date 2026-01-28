@@ -501,8 +501,8 @@ def create_webhook_app(bot_controller_instance):
     
             resp = make_response(sub_b64)
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"
-            resp.headers["Profile-Title"] = "base64:" + b64encode("MoykaVPN".encode()).decode()
-            resp.headers["Announce"] = "base64:" + b64encode("Поддержка MoykaVPN24".encode()).decode()
+            resp.headers["Profile-Title"] = "base64:" + b64("MoykaVPN".encode()).decode()
+            resp.headers["Announce"] = "base64:" + b64("Поддержка MoykaVPN24".encode()).decode()
             resp.headers["Announce-Url"] = "https://t.me/MoykaVPN_bot"
             expire_timestamp = int(expiry_dt.timestamp()) if expiry_dt else 0
             resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expire_timestamp}"
