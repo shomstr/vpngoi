@@ -1437,7 +1437,7 @@ def get_user_router() -> Router:
                 key_email=key_email,
                 expiry_timestamp_ms=int(expiry_date.timestamp() * 1000)
             )
-            logger.info(f"✅ Added key ID {new_key_id} for user {user_id}")
+            logger.info(f"✅ Added key ID {new_key_id} for user {user_id} {host_name}")
 
             await bot.send_sticker(chat_id=message.chat.id, sticker="CAACAgIAAxkBAAEQUNNpc9GsdOuLJjQ3O29jX6RZqg_MYQAC1o0AAvsL4UrQdyLkV8bodzgE")
 
