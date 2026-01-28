@@ -11,7 +11,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def create_keys_on_hosts_and_get_links(user_id: int, target_host: str = "all_servers") -> list[str]:
+
+async def create_keys_on_all_hosts_and_get_links(user_id: int, target_host: str = "all_servers") -> list[str]:
     """
     Генерирует ссылки на ключи для пользователя.
     
