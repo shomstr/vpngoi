@@ -482,7 +482,6 @@ def create_webhook_app(bot_controller_instance):
             return "Subscription expired", 403
     
         try:
-            # Получаем ТОЛЬКО существующие ключи (без создания новых!)
             try:
                 loop = asyncio.get_event_loop()
             except RuntimeError:
@@ -490,19 +489,19 @@ def create_webhook_app(bot_controller_instance):
                 asyncio.set_event_loop(loop)
     
             vless_links = loop.run_until_complete(
-                key_manager.get_existing_vless_links_for_user(user_id)  # ← изменено!
+                key_manager.get_existing_vless_links_for_user(user_id)
             )
     
             if not vless_links:
                 return "No active proxies", 404
     
             raw_text = "\n".join(vless_links)
-            sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
+            sub_b64 = b64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
     
             resp = make_response(sub_b64)
             resp.headers["Content-Type"] = "text/plain; charset=utf-8"
-            resp.headers["Profile-Title"] = "base64:" + b64("MoykaVPN".encode()).decode()
-            resp.headers["Announce"] = "base64:" + b64("Поддержка MoykaVPN24".encode()).decode()
+            resp.headers["Profile-Title"] = "base64:" + b64.b64encode("MoykaVPN".encode()).decode()
+            resp.headers["Announce"] = "base64:" + b64.b64encode("Поддержка MoykaVPN24".encode()).decode()
             resp.headers["Announce-Url"] = "https://t.me/MoykaVPN_bot"
             expire_timestamp = int(expiry_dt.timestamp()) if expiry_dt else 0
             resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expire_timestamp}"
