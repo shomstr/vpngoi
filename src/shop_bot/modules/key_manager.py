@@ -1,31 +1,37 @@
 import logging
 from datetime import datetime, timedelta
-from shop_bot.data_manager.database import add_new_key, get_setting, get_keys_for_host, get_user_keys, get_host
-from shop_bot.modules.xui_api import create_or_update_key_on_host  
-import urllib.parse
+from typing import List, Optional  # ← для совместимости с Python <3.10
 
-from shop_bot.data_manager.database import get_all_hosts  
-from shop_bot.modules.xui_api import login_to_host, get_connection_string, create_or_update_key_on_host
+from shop_bot.data_manager.database import (
+    add_new_key,
+    get_setting,
+    get_user_keys,
+    get_host,
+    get_all_hosts
+)
+from shop_bot.modules.xui_api import (
+    login_to_host,
+    get_connection_string,
+    create_or_update_key_on_host
+)
 
 logger = logging.getLogger(__name__)
 
 
-async def get_existing_vless_links_for_user(user_id: int, host_name: str | None = None) -> list[str]:
+async def get_existing_vless_links_for_user(user_id: int, host_name: Optional[str] = None) -> List[str]:
     """
     Возвращает список VLESS-ссылок для пользователя.
     
-    - Если host_name is None или не передан → только существующие ключи из vpn_keys.
+    - Если host_name is None → только существующие ключи из vpn_keys.
     - Если host_name == "all_servers" → создаёт ключи на всех хостах (если нет) и возвращает все.
     - Если host_name == "server-us" → создаёт/возвращает только для этого хоста.
     """
     if host_name == "all_servers":
-        # Режим: все серверы — создаём недостающие
         all_hosts = get_all_hosts()
         if not all_hosts:
             logger.warning("No hosts configured in the system.")
             return []
 
-        # Получаем текущие ключи пользователя как словарь по host_name
         existing_keys = {key["host_name"]: key for key in get_user_keys(user_id)}
         links = []
         duration_days = int(get_setting("trial_duration_days") or 1)
@@ -35,13 +41,11 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
             email = f"user{user_id}@{h_name}"
 
             if h_name in existing_keys:
-                # Уже есть — генерируем ссылку
                 xui_uuid = existing_keys[h_name]["xui_client_uuid"]
                 conn_str = await _generate_link_from_host_data(host, xui_uuid)
                 if conn_str:
                     links.append(conn_str)
             else:
-                # Нет — создаём
                 try:
                     result = await create_or_update_key_on_host(
                         host_name=h_name,
@@ -49,7 +53,6 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
                         days_to_add=duration_days
                     )
                     if result and result.get("connection_string"):
-                        # Сохраняем в БД
                         add_new_key(
                             user_id=user_id,
                             host_name=h_name,
@@ -66,9 +69,8 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
         return links
 
     elif host_name:
-        # Режим: один конкретный хост
         host_data = get_host(host_name)
-        if not host_name:
+        if not host_data:  # ← ИСПРАВЛЕНО: было `if not host_name`
             logger.error(f"Requested host '{host_name}' not found.")
             return []
 
@@ -80,7 +82,6 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
             conn_str = await _generate_link_from_host_data(host_data, xui_uuid)
             return [conn_str] if conn_str else []
         else:
-            # Создаём ключ на этом хосте
             duration_days = int(get_setting("trial_duration_days") or 1)
             try:
                 result = await create_or_update_key_on_host(
@@ -105,7 +106,7 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
                 return []
 
     else:
-        # Режим: только существующие (старое поведение)
+        # Только существующие ключи
         user_keys = get_user_keys(user_id=user_id)
         if not user_keys:
             return []
@@ -113,7 +114,7 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
         links = []
         for key in user_keys:
             host_data = get_host(key["host_name"])
-            if not host_
+            if not host_data:  # ← ИСПРАВЛЕНО
                 continue
             conn_str = await _generate_link_from_host_data(host_data, key["xui_client_uuid"])
             if conn_str:
@@ -121,7 +122,7 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
         return links
 
 
-async def _generate_link_from_host_data(host_data: dict, user_uuid: str) -> str | None:
+async def _generate_link_from_host_data(host_data: dict, user_uuid: str) -> Optional[str]:
     """Вспомогательная функция для генерации ссылки."""
     try:
         api, inbound = login_to_host(
