@@ -1332,7 +1332,8 @@ def get_user_router() -> Router:
 
         await callback.message.answer_invoice(
             title=f"Подписка на {months} мес.",
-            description=f"{'Все сервера' if host_name == 'all_servers' else host_name}",
+            description=f"{host_name}",
+            host_name=host_name,
             currency="XTR",
             prices=[LabeledPrice(label=f"{months} мес.", amount=stars_count)],
             payload=payment_id,
@@ -1508,7 +1509,7 @@ def get_user_router() -> Router:
         # Определяем цены
         is_all = (host_name == "all_servers")
         prices = {
-            1: {"usdt": 1.0 if is_all else 0.7, "stars": 100 if is_all else 70},
+            1: {"usdt": 1.0 if is_all else 0.7, "stars": 1 if is_all else 1},
             3: {"usdt": 2.5 if is_all else 1.5, "stars": 250 if is_all else 150},
             6: {"usdt": 4.5 if is_all else 3.5, "stars": 450 if is_all else 350},
         }
