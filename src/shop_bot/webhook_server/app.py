@@ -476,38 +476,40 @@ def create_webhook_app(bot_controller_instance):
         user_id, expiry_dt = get_user_id_and_expiry_by_uuid(sub_uuid)
         if not user_id:
             return "Not found", 404
-
+    
         now = datetime.now()
         if expiry_dt and expiry_dt <= now:
             return "Subscription expired", 403
+    
         try:
+            # Получаем ТОЛЬКО существующие ключи (без создания новых!)
             try:
                 loop = asyncio.get_event_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-
+    
             vless_links = loop.run_until_complete(
-                key_manager.create_keys_on_all_hosts_and_get_links(user_id)  
+                key_manager.get_existing_vless_links_for_user(user_id)  # ← изменено!
             )
-
+    
             if not vless_links:
-                return "No proxies available", 404
-
+                return "No active proxies", 404
+    
             raw_text = "\n".join(vless_links)
             sub_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
-            logger.error(expiry_dt)
-
+    
             resp = make_response(sub_b64)
-            resp.headers["Content-Type"] = "text/plain; charset=utf-8"  # ← text/plain!
-            resp.headers["Profile-Title"] = "base64:" + b64.b64encode("MoykaVPN".encode()).decode()
-            resp.headers["Announce"] = "base64:" + b64.b64encode("Поддержка MoykaVPN24".encode()).decode()
+            resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+            resp.headers["Profile-Title"] = "base64:" + b64encode("MoykaVPN".encode()).decode()
+            resp.headers["Announce"] = "base64:" + b64encode("Поддержка MoykaVPN24".encode()).decode()
             resp.headers["Announce-Url"] = "https://t.me/MoykaVPN_bot"
-            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expiry_dt}"
+            expire_timestamp = int(expiry_dt.timestamp()) if expiry_dt else 0
+            resp.headers["Subscription-Userinfo"] = f"upload=0; download=0; total=0; expire={expire_timestamp}"
             resp.headers["Update-Always"] = "true"
-            logger.error(resp)
+    
             return resp
-
+    
         except Exception as e:
             logger.error(f"Ошибка в эндпоинте /sub/{sub_uuid}: {e}", exc_info=True)
             return "Internal error", 500
