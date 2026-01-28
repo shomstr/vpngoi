@@ -68,7 +68,7 @@ async def get_existing_vless_links_for_user(user_id: int, host_name: str | None 
     elif host_name:
         # Режим: один конкретный хост
         host_data = get_host(host_name)
-        if not host_
+        if not host_name:
             logger.error(f"Requested host '{host_name}' not found.")
             return []
 
